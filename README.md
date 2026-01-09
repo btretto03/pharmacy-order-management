@@ -28,7 +28,7 @@ O sistema foi projetado para ser "Portable" e fácil de manter.
 
 1. Clone o repositório:
    ```bash
-   git clone 
+   git clone https://github.com/btretto03/pharmacy-order-management
 2. Instale as dependências
         pip install -r requirements.txt
 3. Execute
