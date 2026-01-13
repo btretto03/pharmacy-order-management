@@ -48,12 +48,13 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-
+#DADOS ESPECÍFICOS #
 CIDADES = [
-    'Cidade1', 'Cidade2', 'Cidade3'
+    'Cidade 1', 'Cidade 2', 'Cidade 3', 'Cidade 4', 
+    'Cidade 5', 'Cidade 6', 'Cidade 7', 'Outros'
 ]
 
-VENDEDORES = ['Vendedor1', 'Vendedor2', 'Vendedor3']
+VENDEDORES = ['Vendedora 1', 'Vendedora 2', 'Vendedora 3']
 
 STATUS_OPCOES = ['ORÇAMENTO', 'CONFIRMADO', 'CANCELADO']
 CATEGORIAS_DESPESA = ['Fixa', 'Variável', 'Pessoal/Retirada', 'Impostos', 'Fornecedor', 'Outros']
@@ -324,7 +325,7 @@ class AppControleVendas:
         self.tree_desp.tag_configure('pago', background=COLOR_BG_PAGO)
         self.tree_desp.tag_configure('sem_data', background=COLOR_BG_SEM_DATA) 
         
-        self.tree_desp.bind("<Double-1>", self.abrir_edicao_despesa) # ALTERADO: Abre janela completa
+        self.tree_desp.bind("<Double-1>", self.abrir_edicao_despesa) 
 
         self.tree_desp.pack(fill="both", expand=True)
         
@@ -578,19 +579,55 @@ class AppControleVendas:
         self.carregar_dados_despesas()
 
     def deletar_despesa(self):
+        """
+        CORRIGIDO: Lógica de exclusão inteligente.
+        - Se for projeção (FIX_): Pergunta se quer deletar TUDO (histórico e futuro).
+        - Se for real e Fixa: Pergunta se apaga só a do mês ou TUDO.
+        - Se for variável: Apaga só a do mês.
+        """
         sel = self.tree_desp.selection()
         if not sel: return
         
         item = self.tree_desp.item(sel)
         id_conta = item['values'][0]
+        desc_conta = item['values'][1]
+        cat_conta = item['values'][2]
         
+        # Caso 1: É uma projeção (linha cinza "A DEFINIR")
         if str(id_conta).startswith("FIX_"):
-            messagebox.showinfo("Info", "Esta é uma projeção automática.\nEla não existe no banco para ser excluída.", parent=self.top_desp)
+            # Extrai a descrição real do ID virtual se necessário, ou usa a da coluna
+            if "||" in str(id_conta):
+                desc_real = str(id_conta).split("||")[1]
+            else:
+                desc_real = desc_conta
+
+            if messagebox.askyesno("Excluir Recorrência", 
+                                   f"Deseja excluir '{desc_real}' de TODOS os meses?\n\nIsso removerá todo o histórico e impedirá novos lançamentos futuros."):
+                self.cursor.execute("DELETE FROM despesas WHERE descricao=? AND categoria='Fixa'", (desc_real,))
+                self.conn.commit()
+                self.carregar_dados_despesas()
             return
 
-        if not messagebox.askyesno("Confirmar", "Excluir conta?", parent=self.top_desp): return
-        
-        self.cursor.execute("DELETE FROM despesas WHERE id=?", (id_conta,))
+        # Caso 2: É uma conta Real (já lançada no banco)
+        if cat_conta == 'Fixa':
+            # Pergunta se quer apagar só essa ou a série inteira
+            resposta = messagebox.askyesnocancel("Excluir Despesa Fixa", 
+                                                 "Esta é uma despesa FIXA.\n\n"
+                                                 "SIM: Exclui de TODOS os meses (Histórico e Futuro)\n"
+                                                 "NÃO: Exclui APENAS deste mês\n"
+                                                 "CANCELAR: Não faz nada")
+            
+            if resposta is None: return # Cancelou
+            
+            if resposta: # SIM -> Delete All
+                self.cursor.execute("DELETE FROM despesas WHERE descricao=? AND categoria='Fixa'", (desc_conta,))
+            else: # NÃO -> Delete Single
+                self.cursor.execute("DELETE FROM despesas WHERE id=?", (id_conta,))
+        else:
+            # Caso 3: Despesa Variável comum
+            if not messagebox.askyesno("Confirmar", "Excluir esta conta?", parent=self.top_desp): return
+            self.cursor.execute("DELETE FROM despesas WHERE id=?", (id_conta,))
+            
         self.conn.commit()
         self.carregar_dados_despesas()
 
