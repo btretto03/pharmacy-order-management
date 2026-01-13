@@ -9,6 +9,7 @@
 # Este software resolve o problema de concorrência de pedidos em uma rede local.
 # Ele permite que múltiplos vendedores lancem pedidos simultaneamente
 # em um banco de dados SQLite centralizado em rede, com atualização em tempo real na interface.
+# Integração adicionada com WhatsApp Web para automação de mensagens ao cliente.
 # -------------------------------------------------------------------------
 
 import tkinter as tk
@@ -19,8 +20,10 @@ from tkcalendar import Calendar
 from PIL import Image, ImageTk 
 import os
 import sys
+import webbrowser
+from urllib.parse import quote
 
-# --- CONFIGURAÇÕES VISUAIS
+# --- CONFIGURAÇÕES VISUAIS E GERAIS
 COLOR_PRIMARY = "#133A68"    # Azul Institucional
 COLOR_SECONDARY = "#D4AF37"  # Dourado (Detalhes)
 COLOR_BG = "#F4F7F6"         # Fundo Off-White
@@ -28,10 +31,13 @@ COLOR_TEXT = "#333333"       # Texto (preto)
 COLOR_SUCCESS = "#2E7D32"    # Verde Escuro
 COLOR_DANGER = "#C62828"     # Vermelho
 
-# --- CORES DE STATUS (DESPESAS)
+# --- CORES DE STATUS (DESPESAS E PEDIDOS)
 COLOR_BG_PENDENTE = '#FFEBEE' 
 COLOR_BG_PAGO = '#C8E6C9'     
 COLOR_BG_SEM_DATA = '#E0E0E0' 
+
+# --- CONFIGURAÇÕES DE NEGÓCIO
+CHAVE_PIX_EMPRESA = "CNPJ: 00.000.000/0001-00" # Ajuste conforme necessário
 
 FONT_MAIN = ("Helvetica", 10)
 FONT_BOLD = ("Helvetica", 10, "bold")
@@ -48,7 +54,7 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-#DADOS ESPECÍFICOS #
+# DADOS ESPECÍFICOS #
 CIDADES = [
     'Cidade 1', 'Cidade 2', 'Cidade 3', 'Cidade 4', 
     'Cidade 5', 'Cidade 6', 'Cidade 7', 'Outros'
@@ -73,7 +79,7 @@ ANOS_FILTRO = ['Todos'] + [str(ano) for ano in range(2025, 2037)]
 class AppControleVendas:
     def __init__(self, root):
         self.root = root
-        self.root.title("Sistema de Controle de Vendas v1.0")
+        self.root.title("Sistema de Controle de Vendas v1.1 - Com Integração WhatsApp")
         self.root.geometry("1360x720")
         self.root.configure(bg=COLOR_BG)
         
@@ -104,6 +110,7 @@ class AppControleVendas:
             self.conn = sqlite3.connect(self.db_name)
             self.cursor = self.conn.cursor()
             self.criar_tabela()
+            self.verificar_tabela_mensagens() # Inicializa templates do Whats
         except Exception as e:
             messagebox.showerror("Erro Crítico", f"Falha ao conectar no Banco de Dados:\n{self.db_name}\n\nVerifique a conexão de rede.\nErro: {e}")
             self.root.destroy()
@@ -176,6 +183,12 @@ class AppControleVendas:
                              command=self.pedir_senha_custom) 
         btn_desp.pack(side="right", padx=20, ipady=5, ipadx=10)
 
+        # Botão WhatsApp (Novo)
+        btn_whats = tk.Button(header_frame, text="📱 WHATSAPP", bg="#25D366", fg="white", 
+                             font=("Arial", 10, "bold"), bd=2, relief="raised", cursor="hand2",
+                             command=self.clique_whats_main) 
+        btn_whats.pack(side="right", padx=5, ipady=5, ipadx=10)
+
         # Área de Faturamento (Oculta por padrão)
         frame_fat = tk.Frame(header_frame, bg=COLOR_PRIMARY, cursor="hand2")
         frame_fat.pack(side="right", padx=10)
@@ -234,7 +247,7 @@ class AppControleVendas:
         btn_ok.pack(pady=10)
 
     def abrir_janela_despesas(self):
-        """Janela principal de Despesas"""
+        """Janela principal de Despesas (Mantida do código original)"""
         self.top_desp = Toplevel(self.root)
         self.top_desp.title("Gerenciamento de Despesas")
         self.top_desp.geometry("1100x700")
@@ -343,7 +356,6 @@ class AppControleVendas:
         self.entry_desc_desp.focus_set()
 
     def adicionar_despesa(self):
-        """Lança despesa no banco. Suporta valor zerado mediante confirmação."""
         try:
             val_str = self.entry_val_desp.get().replace(",", ".")
             aviso_zerado = False
@@ -377,12 +389,6 @@ class AppControleVendas:
             messagebox.showerror("Erro", "Valor inválido", parent=self.top_desp)
 
     def carregar_dados_despesas(self, event=None):
-        """
-        Carrega dados financeiros. 
-        Mostra:
-        1. Despesas reais do banco que batem com filtro de data (ou sem data).
-        2. Projeções automáticas de despesas FIXAS que ainda não existem neste mês.
-        """
         for i in self.tree_desp.get_children():
             self.tree_desp.delete(i)
             
@@ -443,12 +449,10 @@ class AppControleVendas:
         self.lbl_total_despesas.config(text="R$ {:,.2f}".format(total).replace(",", "X").replace(".", ",").replace("X", "."))
 
     def abrir_edicao_despesa(self, event):
-        """NOVA FUNÇÃO: Abre janela completa para editar despesa ou confirmar projeção"""
         selected = self.tree_desp.selection()
         if not selected: return
         item = self.tree_desp.item(selected)
         
-        # Dados da linha selecionada
         id_conta = item['values'][0]
         desc_atual = item['values'][1]
         cat_atual = item['values'][2]
@@ -456,10 +460,8 @@ class AppControleVendas:
         venc_atual = item['values'][4]
         status_atual = item['values'][5]
         
-        # Limpa formatação do valor para edição
         val_limpo = str(val_atual_fmt).replace("R$ ", "").replace(".", "").replace(",", ".")
         
-        # Configura Janela
         popup = Toplevel(self.top_desp)
         popup.title("Editar Despesa")
         popup.geometry("450x450")
@@ -469,11 +471,9 @@ class AppControleVendas:
         entry_style = {"font": FONT_MAIN, "bd": 2, "relief": "groove", "bg": "white"}
         
         tk.Label(popup, text="Detalhes da Despesa", bg=COLOR_PRIMARY, fg=COLOR_SECONDARY, font=FONT_HEADER, pady=10).pack(fill="x")
-        
         frame_c = tk.Frame(popup, bg=COLOR_BG, padx=20, pady=20)
         frame_c.pack(fill="both", expand=True)
         
-        # Campos
         tk.Label(frame_c, text="Descrição:", **lbl_style).pack(fill="x")
         edit_desc = tk.Entry(frame_c, **entry_style)
         edit_desc.pack(fill="x", pady=(0, 10))
@@ -489,11 +489,9 @@ class AppControleVendas:
         edit_val.pack(fill="x", pady=(0, 10))
         edit_val.insert(0, val_limpo)
         
-        # Data com Calendário
         tk.Label(frame_c, text="Vencimento:", **lbl_style).pack(fill="x")
         f_data = tk.Frame(frame_c, bg=COLOR_BG)
         f_data.pack(fill="x", pady=(0, 10))
-        
         edit_venc = tk.Entry(f_data, **entry_style)
         edit_venc.pack(side="left", fill="x", expand=True)
         if venc_atual != "A DEFINIR" and venc_atual != "SEM DATA":
@@ -505,7 +503,6 @@ class AppControleVendas:
         tk.Label(frame_c, text="Status:", **lbl_style).pack(fill="x")
         edit_status = ttk.Combobox(frame_c, values=STATUS_DESPESA, font=FONT_MAIN)
         edit_status.pack(fill="x", pady=(0, 10))
-        # Ajusta status se for projeção
         if status_atual == "A LANÇAR":
             edit_status.set("PENDENTE")
         else:
@@ -513,7 +510,6 @@ class AppControleVendas:
             
         def salvar():
             try:
-                # Validações
                 n_desc = edit_desc.get().strip().upper()
                 n_cat = edit_cat.get()
                 n_val_str = edit_val.get().replace(",", ".")
@@ -526,16 +522,12 @@ class AppControleVendas:
                 try:
                     n_venc_db = datetime.strptime(n_venc_br, '%d/%m/%Y').strftime("%Y-%m-%d")
                 except:
-                    # Se deixar vazio ou inválido, salva como vazio (sem data)
                     n_venc_db = ""
                 
-                # Lógica de Salvar (Novo ou Edição)
                 if str(id_conta).startswith("FIX_"):
-                    # É PROJEÇÃO: Cria nova
                     self.cursor.execute("INSERT INTO despesas (descricao, categoria, valor, vencimento, status) VALUES (?, ?, ?, ?, ?)",
                                         (n_desc, n_cat, n_val, n_venc_db, n_status))
                 else:
-                    # É EXISTENTE: Atualiza
                     self.cursor.execute("""
                         UPDATE despesas SET descricao=?, categoria=?, valor=?, vencimento=?, status=?
                         WHERE id=?
@@ -552,7 +544,6 @@ class AppControleVendas:
                   command=salvar).pack(fill="x", side="bottom", pady=10, padx=20)
 
     def pagar_despesa(self):
-        """Marca como PAGO. Se for projeção, cria e paga."""
         sel = self.tree_desp.selection()
         if not sel: return
         item = self.tree_desp.item(sel)
@@ -579,23 +570,14 @@ class AppControleVendas:
         self.carregar_dados_despesas()
 
     def deletar_despesa(self):
-        """
-        CORRIGIDO: Lógica de exclusão inteligente.
-        - Se for projeção (FIX_): Pergunta se quer deletar TUDO (histórico e futuro).
-        - Se for real e Fixa: Pergunta se apaga só a do mês ou TUDO.
-        - Se for variável: Apaga só a do mês.
-        """
         sel = self.tree_desp.selection()
         if not sel: return
-        
         item = self.tree_desp.item(sel)
         id_conta = item['values'][0]
         desc_conta = item['values'][1]
         cat_conta = item['values'][2]
         
-        # Caso 1: É uma projeção (linha cinza "A DEFINIR")
         if str(id_conta).startswith("FIX_"):
-            # Extrai a descrição real do ID virtual se necessário, ou usa a da coluna
             if "||" in str(id_conta):
                 desc_real = str(id_conta).split("||")[1]
             else:
@@ -608,23 +590,18 @@ class AppControleVendas:
                 self.carregar_dados_despesas()
             return
 
-        # Caso 2: É uma conta Real (já lançada no banco)
         if cat_conta == 'Fixa':
-            # Pergunta se quer apagar só essa ou a série inteira
             resposta = messagebox.askyesnocancel("Excluir Despesa Fixa", 
                                                  "Esta é uma despesa FIXA.\n\n"
                                                  "SIM: Exclui de TODOS os meses (Histórico e Futuro)\n"
                                                  "NÃO: Exclui APENAS deste mês\n"
                                                  "CANCELAR: Não faz nada")
-            
-            if resposta is None: return # Cancelou
-            
-            if resposta: # SIM -> Delete All
+            if resposta is None: return 
+            if resposta: 
                 self.cursor.execute("DELETE FROM despesas WHERE descricao=? AND categoria='Fixa'", (desc_conta,))
-            else: # NÃO -> Delete Single
+            else: 
                 self.cursor.execute("DELETE FROM despesas WHERE id=?", (id_conta,))
         else:
-            # Caso 3: Despesa Variável comum
             if not messagebox.askyesno("Confirmar", "Excluir esta conta?", parent=self.top_desp): return
             self.cursor.execute("DELETE FROM despesas WHERE id=?", (id_conta,))
             
@@ -661,7 +638,7 @@ class AppControleVendas:
         self.entry_filtro_nome.bind("<KeyRelease>", self.carregar_dados)
 
     def criar_formulario(self):
-        """Área de input de Pedidos"""
+        """Área de input de Pedidos (Atualizado com Telefone)"""
         self.frame_form = ttk.LabelFrame(self.root, text="  Novo Pedido  ", padding=15)
         self.frame_form.pack(fill="x", padx=20, pady=5)
         lbl_style = {"bg": COLOR_BG, "fg": COLOR_TEXT, "font": FONT_MAIN, "anchor": "w"}
@@ -678,11 +655,13 @@ class AppControleVendas:
         self.listbox_clientes.bind("<<ListboxSelect>>", self.selecionar_cliente)
         self.listbox_clientes.bind("<Return>", self.selecionar_cliente)
         self.listbox_clientes.bind("<Motion>", self.destacar_no_mouse)
+
+        # Telefone (NOVO)
+        tk.Label(self.frame_form, text="Telefone/Whats:", **lbl_style).grid(row=0, column=2, sticky="w", padx=(20,0))
+        self.entry_telefone = tk.Entry(self.frame_form, width=15, **entry_style)
+        self.entry_telefone.grid(row=0, column=3, padx=5, pady=5)
         
-        tk.Label(self.frame_form, text="Cidade:", **lbl_style).grid(row=0, column=2, sticky="w", padx=(20,0))
-        self.combo_cidade = ttk.Combobox(self.frame_form, values=CIDADES, width=18, font=FONT_MAIN)
-        self.combo_cidade.grid(row=0, column=3, padx=5, pady=5)
-        
+        # Vendedor
         tk.Label(self.frame_form, text="Vendedor:", **lbl_style).grid(row=0, column=4, sticky="w", padx=(20,0))
         self.combo_vendedor = ttk.Combobox(self.frame_form, values=VENDEDORES, width=18, font=FONT_MAIN)
         self.combo_vendedor.current(0) 
@@ -700,14 +679,20 @@ class AppControleVendas:
         self.listbox_produtos.bind("<Return>", self.selecionar_produto)
         self.listbox_produtos.bind("<Motion>", self.destacar_no_mouse)
         
-        # Valor e Data
-        tk.Label(self.frame_form, text="Valor (R$):", **lbl_style).grid(row=1, column=2, sticky="w", padx=(20,0))
+        # Cidade
+        tk.Label(self.frame_form, text="Cidade:", **lbl_style).grid(row=1, column=2, sticky="w", padx=(20,0))
+        self.combo_cidade = ttk.Combobox(self.frame_form, values=CIDADES, width=15, font=FONT_MAIN)
+        self.combo_cidade.grid(row=1, column=3, padx=5, pady=5)
+
+        # Valor
+        tk.Label(self.frame_form, text="Valor (R$):", **lbl_style).grid(row=1, column=4, sticky="w", padx=(20,0))
         self.entry_valor = tk.Entry(self.frame_form, width=18, **entry_style)
-        self.entry_valor.grid(row=1, column=3, padx=5, pady=10)
+        self.entry_valor.grid(row=1, column=5, padx=5, pady=10)
         
-        tk.Label(self.frame_form, text="Data Entrega:", **lbl_style).grid(row=1, column=4, sticky="w", padx=(20,0))
+        # Data
+        tk.Label(self.frame_form, text="Data Entrega:", **lbl_style).grid(row=2, column=0, sticky="w")
         frame_cal = tk.Frame(self.frame_form, bg=COLOR_BG)
-        frame_cal.grid(row=1, column=5, padx=5, sticky="w")
+        frame_cal.grid(row=2, column=1, padx=5, sticky="w")
         self.entry_entrega = tk.Entry(frame_cal, width=14, **entry_style, fg=COLOR_PRIMARY)
         self.entry_entrega.pack(side="left")
         self.entry_entrega.insert(0, datetime.now().strftime("%d/%m/%Y")) 
@@ -717,30 +702,31 @@ class AppControleVendas:
                             command=lambda: self.abrir_popup_calendario(self.entry_entrega))
         btn_cal.pack(side="left", padx=2)
         
-        # Status e Salvar
-        tk.Label(self.frame_form, text="Status:", **lbl_style).grid(row=1, column=6, sticky="w", padx=(20,0))
+        # Status
+        tk.Label(self.frame_form, text="Status:", **lbl_style).grid(row=2, column=2, sticky="w", padx=(20,0))
         self.combo_status = ttk.Combobox(self.frame_form, values=STATUS_OPCOES, width=15, font=FONT_MAIN)
         self.combo_status.current(0) 
-        self.combo_status.grid(row=1, column=7, padx=5, pady=10)
+        self.combo_status.grid(row=2, column=3, padx=5, pady=10)
         
+        # Botão Salvar
         btn_add = tk.Button(self.frame_form, text="SALVAR PEDIDO", bg=COLOR_PRIMARY, fg=COLOR_SECONDARY, 
                             font=("Helvetica", 11, "bold"), width=18, height=2, bd=0, cursor="hand2",
                             activebackground=COLOR_SECONDARY, activeforeground=COLOR_PRIMARY,
                             command=self.adicionar_pedido)
-        btn_add.grid(row=0, column=8, rowspan=2, padx=20)
+        btn_add.grid(row=2, column=4, columnspan=2, padx=20, sticky="e")
 
     def criar_tabela_listagem(self):
-        """Cria a tabela principal que exibe os dados"""
+        """Cria a tabela principal que exibe os dados (Atualizada com Telefone)"""
         frame_lista = ttk.LabelFrame(self.root, text="  Últimos Lançamentos  ", padding=10)
         frame_lista.pack(fill="both", expand=True, padx=20, pady=10)
         
-        cols = ("ID", "Data", "Nome", "Cidade", "Vendedor", "Produto", "Valor", "Entrega", "Status")
+        cols = ("ID", "Data", "Nome", "Telefone", "Cidade", "Vendedor", "Produto", "Valor", "Entrega", "Status")
         self.tree = ttk.Treeview(frame_lista, columns=cols, show="headings", style="Treeview")
         
         config_cols = {
-            "Data": (90, "center"), "Nome": (200, "center"), "Cidade": (100, "center"),
-            "Vendedor": (90, "center"), "Produto": (200, "center"), "Valor": (100, "center"),
-            "Entrega": (90, "center"), "Status": (110, "center")
+            "Data": (90, "center"), "Nome": (200, "center"), "Telefone": (110, "center"),
+            "Cidade": (100, "center"), "Vendedor": (90, "center"), "Produto": (200, "center"), 
+            "Valor": (100, "center"), "Entrega": (90, "center"), "Status": (110, "center")
         }
         self.tree["displaycolumns"] = list(config_cols.keys())
         for col, (largura, ancora) in config_cols.items():
@@ -777,14 +763,22 @@ class AppControleVendas:
         btn_confirmar.pack(side="left")
 
     def criar_tabela(self):
-        """Inicializa tabelas do banco"""
+        """Inicializa tabelas do banco com suporte a migração de esquema"""
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS pedidos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 data TEXT, nome TEXT, cidade TEXT, produto TEXT,
-                valor REAL, status TEXT, vendedor TEXT, entrega TEXT
+                valor REAL, status TEXT, vendedor TEXT, entrega TEXT, telefone TEXT
             )
         """)
+        
+        # Migração: Verifica se coluna telefone existe, se não, adiciona
+        try: 
+            self.cursor.execute("SELECT telefone FROM pedidos LIMIT 1")
+        except: 
+            self.cursor.execute("ALTER TABLE pedidos ADD COLUMN telefone TEXT")
+            self.conn.commit()
+
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS despesas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -793,6 +787,30 @@ class AppControleVendas:
             )
         """)
         self.conn.commit()
+
+    def verificar_tabela_mensagens(self):
+        """Inicializa tabela de templates do WhatsApp"""
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mensagens_whats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                titulo TEXT,
+                mensagem TEXT
+            )
+        """)
+        self.conn.commit()
+        
+        # Se vazia, insere padrões iniciais
+        self.cursor.execute("SELECT count(*) FROM mensagens_whats")
+        if self.cursor.fetchone()[0] == 0:
+            msgs_padrao = [
+                ("Orçamento 💰", "Olá {nome}, tudo bem? O orçamento para *{produto}* ficou em *{valor}*. Podemos confirmar a manipulação?"),
+                ("Confirmado ✅", "Olá {nome}, seu pedido de *{produto}* foi confirmado! Valor: {valor}. Previsão de entrega: {entrega}. Obrigado! 🌿"),
+                ("Pronto (Retirar) ✨", "Olá {nome}, sua fórmula de *{produto}* já está pronta e disponível para retirada! 😃"),
+                ("Saiu p/ Entrega 🛵", "Olá {nome}, seu pedido saiu para entrega agora. Por favor, deixe alguém avisado para receber. 🏠"),
+                ("Chave PIX 💠", f"Olá {{nome}}, segue nossa chave PIX para pagamento:\n\n*{CHAVE_PIX_EMPRESA}*\n\nPor favor, envie o comprovante assim que possível.")
+            ]
+            self.cursor.executemany("INSERT INTO mensagens_whats (titulo, mensagem) VALUES (?, ?)", msgs_padrao)
+            self.conn.commit()
 
     def abrir_popup_calendario(self, entry_alvo):
         """Popup de calendário"""
@@ -920,17 +938,195 @@ class AppControleVendas:
             if cidade_encontrada in CIDADES: self.combo_cidade.set(cidade_encontrada)
             else: self.combo_cidade.set(cidade_encontrada)
 
+    # -------------------------------------------------------------------------
+    # MÓDULO DE INTEGRAÇÃO WHATSAPP WEB
+    # Este bloco gerencia a abertura de chats e envio de mensagens.
+    # -------------------------------------------------------------------------
+    def enviar_msg_whats(self, telefone, mensagem):
+        """Formata o número e abre a API do WhatsApp no navegador padrão"""
+        if not telefone: return
+        nums = "".join([c for c in telefone if c.isdigit()])
+        if not nums: return
+        
+        # Garante DDI 55 se o número tiver tamanho padrão (10 ou 11 dígitos)
+        if len(nums) >= 10 and len(nums) <= 11: nums = "55" + nums
+        
+        link = f"https://web.whatsapp.com/send?phone={nums}&text={quote(mensagem)}"
+        webbrowser.open(link)
+
+    def clique_whats_main(self):
+        """Callback do botão WhatsApp no cabeçalho"""
+        selected = self.tree.selection()
+        if not selected: 
+            messagebox.showwarning("Aviso", "Selecione um pedido na tabela para enviar WhatsApp.")
+            return
+        
+        item = self.tree.item(selected)
+        dados = item['values'] 
+        pedido_id = dados[0]
+        nome = dados[2]
+        telefone = str(dados[3])
+        produto = dados[6]
+        valor = dados[7]
+        entrega = dados[8]
+
+        # Tratamento de telefone inexistente
+        if not telefone or telefone == "None" or telefone == "":
+            novo_tel = simpledialog.askstring("Whats", f"Telefone não cadastrado para {nome}.\nDigite o número:")
+            if novo_tel:
+                telefone = novo_tel
+                self.cursor.execute("UPDATE pedidos SET telefone=? WHERE id=?", (novo_tel, pedido_id))
+                self.conn.commit()
+                self.carregar_dados(manter_selecao=True)
+            else:
+                return
+
+        self.abrir_menu_whats(telefone, nome, produto, valor, entrega)
+
+    def abrir_menu_whats(self, telefone, nome, produto, valor, entrega):
+        """Janela de seleção de Template de Mensagem"""
+        menu = Toplevel(self.root)
+        menu.title("Central de Mensagens")
+        menu.geometry("350x450")
+        menu.configure(bg=COLOR_BG)
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 175
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 225
+        menu.geometry(f"+{x}+{y}")
+
+        tk.Label(menu, text="Enviar Mensagem para:", bg=COLOR_BG, fg="#555").pack(pady=(10,0))
+        tk.Label(menu, text=nome, bg=COLOR_BG, font=FONT_BOLD, fg=COLOR_PRIMARY).pack()
+
+        # Busca mensagens do banco
+        self.cursor.execute("SELECT id, titulo, mensagem FROM mensagens_whats")
+        modelos = self.cursor.fetchall()
+
+        frame_scroll = tk.Frame(menu, bg=COLOR_BG)
+        frame_scroll.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Canvas para rolagem se tiver muitos botões
+        canvas = tk.Canvas(frame_scroll, bg=COLOR_BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(frame_scroll, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=COLOR_BG)
+
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=310)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Gera os botões dinamicamente
+        btn_style = {"font": ("Arial", 10), "bg": "white", "bd": 1, "relief": "raised", "cursor": "hand2", "anchor": "w", "padx": 10}
+        
+        for mid, titulo, texto_raw in modelos:
+            # Substitui placeholders
+            texto_fmt = texto_raw.replace("{nome}", nome).replace("{produto}", produto).replace("{valor}", str(valor)).replace("{entrega}", str(entrega))
+            
+            btn = tk.Button(scrollable_frame, text=titulo, **btn_style,
+                            command=lambda t=texto_fmt: [self.enviar_msg_whats(telefone, t), menu.destroy()])
+            btn.pack(fill="x", pady=4, ipady=5)
+
+        # Botão de Gerenciar
+        tk.Button(menu, text="⚙️ Gerenciar Mensagens", bg="#E0E0E0", fg=COLOR_TEXT, 
+                  command=self.abrir_editor_mensagens).pack(fill="x", side="bottom", pady=10, padx=20)
+
+    def abrir_editor_mensagens(self):
+        """Interface CRUD para editar templates de mensagens"""
+        editor = Toplevel(self.root)
+        editor.title("Editor de Modelos")
+        editor.geometry("600x400")
+        editor.configure(bg=COLOR_BG)
+        
+        frame_esq = tk.Frame(editor, bg=COLOR_BG, width=200)
+        frame_esq.pack(side="left", fill="y", padx=10, pady=10)
+        tk.Label(frame_esq, text="Modelos Salvos", bg=COLOR_BG, font=FONT_BOLD).pack()
+        listbox_msgs = tk.Listbox(frame_esq, width=25, height=15)
+        listbox_msgs.pack(fill="y", expand=True)
+        
+        frame_dir = tk.Frame(editor, bg=COLOR_BG)
+        frame_dir.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+        tk.Label(frame_dir, text="Título (Ex: Entrega):", bg=COLOR_BG, anchor="w").pack(fill="x")
+        entry_titulo = tk.Entry(frame_dir)
+        entry_titulo.pack(fill="x", pady=(0,10))
+        tk.Label(frame_dir, text="Mensagem (Use {nome}, {valor}...):", bg=COLOR_BG, anchor="w").pack(fill="x")
+        text_msg = tk.Text(frame_dir, height=8, width=30)
+        text_msg.pack(fill="both", expand=True)
+        
+        def carregar_lista():
+            listbox_msgs.delete(0, tk.END)
+            self.cursor.execute("SELECT id, titulo FROM mensagens_whats")
+            for mid, tit in self.cursor.fetchall():
+                listbox_msgs.insert(tk.END, f"{mid} - {tit}")
+
+        def selecionar_modelo(event):
+            sel = listbox_msgs.curselection()
+            if not sel: return
+            item = listbox_msgs.get(sel[0])
+            mid = item.split(" - ")[0]
+            self.cursor.execute("SELECT titulo, mensagem FROM mensagens_whats WHERE id=?", (mid,))
+            res = self.cursor.fetchone()
+            if res:
+                entry_titulo.delete(0, tk.END)
+                entry_titulo.insert(0, res[0])
+                text_msg.delete("1.0", tk.END)
+                text_msg.insert("1.0", res[1])
+                
+        def salvar_modelo():
+            tit = entry_titulo.get()
+            msg = text_msg.get("1.0", tk.END).strip()
+            if not tit or not msg: return
+            sel = listbox_msgs.curselection()
+            if sel:
+                mid = listbox_msgs.get(sel[0]).split(" - ")[0]
+                self.cursor.execute("UPDATE mensagens_whats SET titulo=?, mensagem=? WHERE id=?", (tit, msg, mid))
+            else:
+                self.cursor.execute("INSERT INTO mensagens_whats (titulo, mensagem) VALUES (?, ?)", (tit, msg))
+            self.conn.commit()
+            carregar_lista()
+            limpar()
+            messagebox.showinfo("Sucesso", "Modelo salvo!")
+
+        def deletar_modelo():
+            sel = listbox_msgs.curselection()
+            if not sel: return
+            if not messagebox.askyesno("Confirmar", "Apagar este modelo?"): return
+            mid = listbox_msgs.get(sel[0]).split(" - ")[0]
+            self.cursor.execute("DELETE FROM mensagens_whats WHERE id=?", (mid,))
+            self.conn.commit()
+            carregar_lista()
+            limpar()
+
+        def limpar():
+            listbox_msgs.selection_clear(0, tk.END)
+            entry_titulo.delete(0, tk.END)
+            text_msg.delete("1.0", tk.END)
+
+        frame_botoes = tk.Frame(frame_dir, bg=COLOR_BG)
+        frame_botoes.pack(fill="x", pady=10)
+        tk.Button(frame_botoes, text="Novo / Limpar", command=limpar).pack(side="left")
+        tk.Button(frame_botoes, text="Excluir", bg=COLOR_DANGER, fg="white", command=deletar_modelo).pack(side="right", padx=5)
+        tk.Button(frame_botoes, text="Salvar", bg=COLOR_PRIMARY, fg="white", command=salvar_modelo).pack(side="right")
+
+        listbox_msgs.bind("<<ListboxSelect>>", selecionar_modelo)
+        carregar_lista()
+
     def abrir_janela_edicao(self, event):
-        """Popup de edição de pedido"""
+        """Popup de edição de pedido (Atualizado com campo Telefone)"""
         selected = self.tree.selection()
         if not selected: return
         item = self.tree.item(selected)
         dados = item['values']
         pedido_id = dados[0]
         
+        # Busca registro completo para pegar o telefone real do DB
+        self.cursor.execute("SELECT * FROM pedidos WHERE id=?", (pedido_id,))
+        row_full = self.cursor.fetchone()
+        try: telefone_db = row_full[9] if len(row_full) > 9 else ""
+        except: telefone_db = ""
+
         popup = Toplevel(self.root)
         popup.title(f"Editar Pedido #{pedido_id}")
-        popup.geometry("450x550")
+        popup.geometry("500x600")
         popup.configure(bg=COLOR_BG)
         
         lbl_style = {"bg": COLOR_BG, "fg": COLOR_PRIMARY, "font": FONT_BOLD, "anchor": "w"}
@@ -942,8 +1138,16 @@ class AppControleVendas:
         
         tk.Label(frame_conteudo, text="Nome Cliente:", **lbl_style).pack(fill="x", pady=(10,0))
         edit_nome = tk.Entry(frame_conteudo, **entry_style)
-        edit_nome.pack(fill="x", pady=(0,10))
+        edit_nome.pack(fill="x", pady=(0,5))
         edit_nome.insert(0, dados[2])
+
+        # Telefone na Edição
+        fr_tel = tk.Frame(frame_conteudo, bg=COLOR_BG)
+        fr_tel.pack(fill="x", pady=(5,5))
+        tk.Label(fr_tel, text="Telefone:", **lbl_style).pack(side="left")
+        edit_telefone = tk.Entry(fr_tel, width=20, **entry_style)
+        edit_telefone.pack(side="left", padx=5)
+        if telefone_db: edit_telefone.insert(0, telefone_db)
         
         frame_row1 = tk.Frame(frame_conteudo, bg=COLOR_BG)
         frame_row1.pack(fill="x", pady=(0,10))
@@ -1009,13 +1213,14 @@ class AppControleVendas:
                     dt_ent_db = dt_ent_obj.strftime("%Y-%m-%d")
                 except: dt_ent_db = edit_data_entrega.get()
                 
+                # Update inclui telefone
                 self.cursor.execute("""
                     UPDATE pedidos SET
                         data = ?, nome = ?, cidade = ?, produto = ?,
-                        valor = ?, status = ?, vendedor = ?, entrega = ?
+                        valor = ?, status = ?, vendedor = ?, entrega = ?, telefone = ?
                     WHERE id = ?
                 """, (dt_ped_db, edit_nome.get().upper(), edit_cidade.get(), edit_produto.get().upper(),
-                      novo_valor, edit_status.get(), edit_vendedor.get(), dt_ent_db, pedido_id))
+                      novo_valor, edit_status.get(), edit_vendedor.get(), dt_ent_db, edit_telefone.get(), pedido_id))
                 self.conn.commit()
                 self.carregar_dados()
                 popup.destroy()
@@ -1042,20 +1247,24 @@ class AppControleVendas:
             vendedor = self.combo_vendedor.get().strip()
             produto = self.entry_produto.get().strip().upper()
             data_entrega_br = self.entry_entrega.get()
+            telefone = self.entry_telefone.get().strip() 
+
             try:
                 dt_obj = datetime.strptime(data_entrega_br, '%d/%m/%Y')
                 data_entrega_db = dt_obj.strftime("%Y-%m-%d")
             except:
                 data_entrega_db = data_entrega_br
+            
             self.cursor.execute("""
-                INSERT INTO pedidos (data, nome, cidade, produto, valor, status, vendedor, entrega)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (data_hoje, nome_cliente, self.combo_cidade.get(), produto, valor, self.combo_status.get(), vendedor, data_entrega_db))
+                INSERT INTO pedidos (data, nome, cidade, produto, valor, status, vendedor, entrega, telefone)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (data_hoje, nome_cliente, self.combo_cidade.get(), produto, valor, self.combo_status.get(), vendedor, data_entrega_db, telefone))
             self.conn.commit()
             
             self.entry_nome_novo.delete(0, 'end')
             self.entry_produto.delete(0, 'end')
             self.entry_valor.delete(0, 'end')
+            self.entry_telefone.delete(0, 'end')
             self.entry_entrega.delete(0, tk.END)
             self.entry_entrega.insert(0, datetime.now().strftime("%d/%m/%Y"))
             self.listbox_clientes.place_forget()
@@ -1115,11 +1324,16 @@ class AppControleVendas:
                         entrega_br = datetime.strptime(entrega_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     else: entrega_br = "-"
                 except: entrega_br = "-"
+                
+                # Telefone é row[9] se existir na projeção
+                try: telefone = row[9] if len(row) > 9 else ""
+                except: telefone = ""
+
                 tag_cor = 'orcamento'
                 if status == 'CONFIRMADO': tag_cor = 'confirmado'
                 elif status == 'CANCELADO': tag_cor = 'cancelado'
                 
-                item_id = self.tree.insert("", "end", values=(row_id, data_br, nome, cidade, vendedor, produto, valor_fmt, entrega_br, status), tags=(tag_cor,))
+                item_id = self.tree.insert("", "end", values=(row_id, data_br, nome, telefone, cidade, vendedor, produto, valor_fmt, entrega_br, status), tags=(tag_cor,))
                 
                 if manter_selecao and id_selecionado and row_id == id_selecionado:
                     self.tree.selection_set(item_id)
