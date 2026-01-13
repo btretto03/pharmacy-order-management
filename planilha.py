@@ -48,14 +48,12 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-#DADOS ESPECÍFICOS #
+
 CIDADES = [
-    'Maravilha', 'Cunha Porã', 'São Miguel Do Oeste', 'Descanso', 
-    'Itajai', 'Pinhalzinho', 'Itapema', 'Bom Jesus do Oeste', 
-    'Caibi', 'Palmitos', 'Outros'
+    'Cidade1', 'Cidade2', 'Cidade3'
 ]
 
-VENDEDORES = ['Anna', 'Sandra', 'Andressa']
+VENDEDORES = ['Vendedor1', 'Vendedor2', 'Vendedor3']
 
 STATUS_OPCOES = ['ORÇAMENTO', 'CONFIRMADO', 'CANCELADO']
 CATEGORIAS_DESPESA = ['Fixa', 'Variável', 'Pessoal/Retirada', 'Impostos', 'Fornecedor', 'Outros']
