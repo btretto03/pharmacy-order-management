@@ -12,7 +12,7 @@
 # -------------------------------------------------------------------------
 
 import tkinter as tk
-from tkinter import ttk, messagebox, Toplevel, simpledialog # Adicionado simpledialog
+from tkinter import ttk, messagebox, Toplevel, simpledialog
 import sqlite3
 from datetime import datetime
 from tkcalendar import Calendar
@@ -25,7 +25,7 @@ COLOR_PRIMARY = "#133A68"    # Azul Institucional
 COLOR_SECONDARY = "#D4AF37"  # Dourado (Detalhes)
 COLOR_BG = "#F4F7F6"         # Fundo Off-White
 COLOR_TEXT = "#333333"       # Texto (preto)
-COLOR_SUCCESS = "#2E7D32"    # Verde (escuro já que em alguns monitores se confundia com branco)
+COLOR_SUCCESS = "#2E7D32"    # Verde Escuro
 COLOR_DANGER = "#C62828"     # Vermelho
 
 # --- CORES DE STATUS (DESPESAS)
@@ -40,7 +40,7 @@ FONT_TITLE = ("Helvetica", 22, "bold")
 
 def resource_path(relative_path):
     """
-    Função para rodar o exe.
+    Função para rodar o exe com recursos embutidos.
     """
     try:
         base_path = sys._MEIPASS
@@ -50,14 +50,16 @@ def resource_path(relative_path):
 
 #DADOS ESPECÍFICOS #
 CIDADES = [
-    'Cidade 1', 'Cidade 2', 'Cidade 3', 'Cidade 4', 
-    'Cidade 5', 'Cidade 6', 'Cidade 7', 'Outros'
+    'Maravilha', 'Cunha Porã', 'São Miguel Do Oeste', 'Descanso', 
+    'Itajai', 'Pinhalzinho', 'Itapema', 'Bom Jesus do Oeste', 
+    'Caibi', 'Palmitos', 'Outros'
 ]
 
-VENDEDORES = ['Vendedora 1', 'Vendedora 2', 'Vendedora 3']
+VENDEDORES = ['Anna', 'Sandra', 'Andressa']
 
 STATUS_OPCOES = ['ORÇAMENTO', 'CONFIRMADO', 'CANCELADO']
 CATEGORIAS_DESPESA = ['Fixa', 'Variável', 'Pessoal/Retirada', 'Impostos', 'Fornecedor', 'Outros']
+STATUS_DESPESA = ['PENDENTE', 'PAGO']
 
 # Filtros de data
 MESES_FILTRO = {
@@ -66,7 +68,7 @@ MESES_FILTRO = {
     'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12'
 }
 
-# Gera lista de anos automaticamente a partir de 2025, coloquei 2037 como limite
+# Gera lista de anos automaticamente a partir de 2025 até 2037
 ANOS_FILTRO = ['Todos'] + [str(ano) for ano in range(2025, 2037)]
 
 class AppControleVendas:
@@ -76,11 +78,11 @@ class AppControleVendas:
         self.root.geometry("1360x720")
         self.root.configure(bg=COLOR_BG)
         
-        #Variável que armazena o faturamento mensal
+        # Variável que armazena o faturamento mensal (Cache visual)
         self.total_cache = "R$ 0,00" 
         
-        # O sistema busca um arquivo de texto 'caminho_db.txt' que contém o endereço do servidor.
-        self.db_name = "vendas.db" # Padrão local caso não encontre config
+        # Lógica de conexão com Banco de Dados
+        self.db_name = "vendas.db" 
         
         if getattr(sys, 'frozen', False):
             application_path = os.path.dirname(sys.executable)
@@ -98,23 +100,22 @@ class AppControleVendas:
             except Exception as e:
                 print(f"Erro ao ler configuração: {e}")
 
-        # Teste de conexão inicial
+        # Inicializa conexão
         try:
             self.conn = sqlite3.connect(self.db_name)
             self.cursor = self.conn.cursor()
             self.criar_tabela()
         except Exception as e:
-            # Feedback visual crítico caso a rede esteja fora
             messagebox.showerror("Erro Crítico", f"Falha ao conectar no Banco de Dados:\n{self.db_name}\n\nVerifique a conexão de rede.\nErro: {e}")
             self.root.destroy()
             sys.exit()
 
-        # Listas para autocomplete (Carregadas da memória para performance)
+        # Listas para autocomplete em memória
         self.lista_clientes_db = []
         self.lista_produtos_db = []
         self.logo_img = None 
 
-        #INTERFACE
+        # --- CONSTRUÇÃO DA INTERFACE ---
         self.configurar_estilos()
         self.criar_cabecalho()
         self.criar_area_filtros()
@@ -124,17 +125,15 @@ class AppControleVendas:
 
         self.carregar_sugestoes_memoria()
         
-        # Inicia a atualização do sistema
+        # Inicia loop de atualização automática
         self.iniciar_loop_atualizacao()
 
     def iniciar_loop_atualizacao(self):
-        """
-        Função recursiva que recarrega os dados a cada 5 segundos.
-        """
+        """Atualiza a tabela a cada 5 segundos"""
         try:
             self.carregar_dados(manter_selecao=True)
         except:
-            pass # Evita travar se o banco estiver momentaneamente bloqueado
+            pass 
         self.root.after(5000, self.iniciar_loop_atualizacao)
 
     def configurar_estilos(self):
@@ -156,7 +155,6 @@ class AppControleVendas:
         header_frame = tk.Frame(self.root, bg=COLOR_PRIMARY, pady=15, padx=20)
         header_frame.pack(fill="x")
 
-        # Logotipo
         try:
             caminho_imagem = resource_path("logo.png")
             if os.path.exists(caminho_imagem):
@@ -168,22 +166,18 @@ class AppControleVendas:
         except Exception as e:
             print(f"Erro logo: {e}")
 
-        # Títulos
         title_container = tk.Frame(header_frame, bg=COLOR_PRIMARY)
         title_container.pack(side="left", fill="y")
         tk.Label(title_container, text="SISTEMA DE GESTÃO", bg=COLOR_PRIMARY, fg=COLOR_SECONDARY, font=FONT_TITLE).pack(anchor="w")
         tk.Label(title_container, text="Controle de Vendas e Pedidos", bg=COLOR_PRIMARY, fg="white", font=("Helvetica", 12)).pack(anchor="w")
 
-        # --- BOTÃO DE DESPESAS (COM SENHA) ---
-        # Botão discreto para área financeira
+        # Botão para o Módulo Financeiro (Despesas)
         btn_desp = tk.Button(header_frame, text="💲 DESPESAS", bg=COLOR_SECONDARY, fg=COLOR_PRIMARY, 
                              font=("Arial", 10, "bold"), bd=2, relief="raised", cursor="hand2",
                              command=self.pedir_senha_custom) 
         btn_desp.pack(side="right", padx=20, ipady=5, ipadx=10)
 
-        # ÁREA DO FATURAMENTO (Recurso de Privacidade)
-        # Como não era interessante mostrar o faturamento sempre, criei um botao que só o mostra
-        # quando estiver pressionado
+        # Área de Faturamento (Oculta por padrão)
         frame_fat = tk.Frame(header_frame, bg=COLOR_PRIMARY, cursor="hand2")
         frame_fat.pack(side="right", padx=10)
 
@@ -193,10 +187,9 @@ class AppControleVendas:
         lbl_titulo_fat = tk.Label(frame_fat, text="Faturamento (Segure para ver):", bg=COLOR_PRIMARY, fg="white", font=FONT_MAIN, cursor="hand2")
         lbl_titulo_fat.pack(side="top", anchor="e")
 
-        # Bindings de eventos de mouse
         for widget in [frame_fat, self.lbl_total, lbl_titulo_fat]:
-            widget.bind("<Button-1>", self.mostrar_faturamento)       # Clicou
-            widget.bind("<ButtonRelease-1>", self.esconder_faturamento) # Soltou
+            widget.bind("<Button-1>", self.mostrar_faturamento)
+            widget.bind("<ButtonRelease-1>", self.esconder_faturamento)
 
     def mostrar_faturamento(self, event):
         self.lbl_total.config(text=self.total_cache)
@@ -208,11 +201,10 @@ class AppControleVendas:
     # LÓGICA DE SENHA E MÓDULO FINANCEIRO
     # ==========================================
     def pedir_senha_custom(self):
-        """Cria um popup de senha onde o ENTER funciona garantido"""
+        """Popup de senha seguro"""
         pop_senha = Toplevel(self.root)
         pop_senha.title("Acesso Restrito")
         
-        # Centraliza
         largura = 300
         altura = 150
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (largura // 2)
@@ -243,18 +235,17 @@ class AppControleVendas:
         btn_ok.pack(pady=10)
 
     def abrir_janela_despesas(self):
-        """Abre a janela principal do módulo financeiro"""
+        """Janela principal de Despesas"""
         self.top_desp = Toplevel(self.root)
         self.top_desp.title("Gerenciamento de Despesas")
         self.top_desp.geometry("1100x700")
         self.top_desp.configure(bg=COLOR_BG)
         
-        # Filtros e Topo
+        # Filtros
         frame_topo = tk.Frame(self.top_desp, bg=COLOR_BG, pady=15, padx=20)
         frame_topo.pack(fill="x")
         lbl_style = {"bg": COLOR_BG, "fg": COLOR_PRIMARY, "font": FONT_BOLD}
         
-        # --- FILTRO MÊS ---
         tk.Label(frame_topo, text="Mês:", **lbl_style).pack(side="left", padx=(0, 5))
         self.combo_mes_desp = ttk.Combobox(frame_topo, values=list(MESES_FILTRO.keys()), width=12, state="readonly", font=FONT_MAIN)
         try: self.combo_mes_desp.current(datetime.now().month)
@@ -262,7 +253,6 @@ class AppControleVendas:
         self.combo_mes_desp.pack(side="left")
         self.combo_mes_desp.bind("<<ComboboxSelected>>", self.carregar_dados_despesas)
         
-        # --- FILTRO ANO ---
         tk.Label(frame_topo, text="Ano:", **lbl_style).pack(side="left", padx=(15, 5))
         self.combo_ano_desp = ttk.Combobox(frame_topo, values=ANOS_FILTRO, width=10, state="readonly", font=FONT_MAIN)
         ano_atual = str(datetime.now().year)
@@ -271,12 +261,12 @@ class AppControleVendas:
         self.combo_ano_desp.pack(side="left")
         self.combo_ano_desp.bind("<<ComboboxSelected>>", self.carregar_dados_despesas)
 
-        # TOTALIZADOR FINANCEIRO
+        # Totalizador
         tk.Label(frame_topo, text="Total Despesas:", **lbl_style).pack(side="left", padx=(30, 5))
         self.lbl_total_despesas = tk.Label(frame_topo, text="R$ 0,00", bg=COLOR_BG, fg=COLOR_DANGER, font=("Helvetica", 14, "bold"))
         self.lbl_total_despesas.pack(side="left")
         
-        # Formulário de Nova Despesa
+        # Formulário Nova Despesa
         frame_form = ttk.LabelFrame(self.top_desp, text="  Nova Conta a Pagar  ", padding=15)
         frame_form.pack(fill="x", padx=20, pady=5)
         
@@ -307,7 +297,6 @@ class AppControleVendas:
         tk.Button(frame_form, text="LANÇAR", bg=COLOR_DANGER, fg="white", font=FONT_BOLD, 
                   command=self.adicionar_despesa).grid(row=0, column=9, padx=20)
         
-        # Atalhos de Teclado
         self.entry_desc_desp.bind('<Return>', lambda e: self.adicionar_despesa())
         self.entry_val_desp.bind('<Return>', lambda e: self.adicionar_despesa())
         self.entry_venc_desp.bind('<Return>', lambda e: self.adicionar_despesa())
@@ -316,11 +305,10 @@ class AppControleVendas:
         frame_lista = ttk.LabelFrame(self.top_desp, text="  Contas do Mês  ", padding=10)
         frame_lista.pack(fill="both", expand=True, padx=20, pady=10)
         
-        # Configuração de Colunas Centralizadas (Descrição primeiro)
+        # Colunas centralizadas, ID Oculto
         cols = ("ID", "Descrição", "Categoria", "Valor", "Vencimento", "Status")
         self.tree_desp = ttk.Treeview(frame_lista, columns=cols, show="headings", style="Treeview")
         
-        # Oculta a coluna ID
         self.tree_desp["displaycolumns"] = ("Descrição", "Categoria", "Valor", "Vencimento", "Status")
         
         self.tree_desp.heading("Descrição", text="Descrição")
@@ -334,12 +322,11 @@ class AppControleVendas:
         self.tree_desp.heading("Status", text="Status")
         self.tree_desp.column("Status", width=100, anchor="center")
         
-        # Cores e Eventos
         self.tree_desp.tag_configure('pendente', background=COLOR_BG_PENDENTE)
         self.tree_desp.tag_configure('pago', background=COLOR_BG_PAGO)
         self.tree_desp.tag_configure('sem_data', background=COLOR_BG_SEM_DATA) 
         
-        self.tree_desp.bind("<Double-1>", self.editar_data_despesa) 
+        self.tree_desp.bind("<Double-1>", self.abrir_edicao_despesa) # ALTERADO: Abre janela completa
 
         self.tree_desp.pack(fill="both", expand=True)
         
@@ -357,12 +344,11 @@ class AppControleVendas:
         self.entry_desc_desp.focus_set()
 
     def adicionar_despesa(self):
-        """Lança uma nova despesa no banco"""
+        """Lança despesa no banco. Suporta valor zerado mediante confirmação."""
         try:
             val_str = self.entry_val_desp.get().replace(",", ".")
             aviso_zerado = False
             
-            # Tratamento de Valor Zero com confirmação simplificada
             if not val_str:
                 if not messagebox.askyesno("Confirmar", "Valor não informado, deseja prosseguir?", parent=self.top_desp):
                     return
@@ -381,22 +367,23 @@ class AppControleVendas:
             self.cursor.execute("INSERT INTO despesas (descricao, categoria, valor, vencimento, status) VALUES (?, ?, ?, ?, ?)",
                                 (desc, self.combo_cat_desp.get(), valor, venc_db, 'PENDENTE'))
             self.conn.commit()
-            
-            # Limpa campos
             self.entry_desc_desp.delete(0, 'end')
             self.entry_val_desp.delete(0, 'end')
-            
             self.carregar_dados_despesas()
             self.entry_desc_desp.focus_set() 
             
-            # Suprime popup se for fluxo rápido (valor zerado)
             if not aviso_zerado:
                 messagebox.showinfo("Sucesso", "Conta lançada!", parent=self.top_desp)
         except ValueError:
             messagebox.showerror("Erro", "Valor inválido", parent=self.top_desp)
 
     def carregar_dados_despesas(self, event=None):
-        """Carrega despesas reais e projeta despesas fixas automaticamente"""
+        """
+        Carrega dados financeiros. 
+        Mostra:
+        1. Despesas reais do banco que batem com filtro de data (ou sem data).
+        2. Projeções automáticas de despesas FIXAS que ainda não existem neste mês.
+        """
         for i in self.tree_desp.get_children():
             self.tree_desp.delete(i)
             
@@ -412,12 +399,10 @@ class AppControleVendas:
         if ano != 'Todos':
             filtros_data.append(f"strftime('%Y', vencimento) = '{ano}'")
         
-        # Filtra datas OU mostra o que não tem data (projetos/rascunhos)
         if filtros_data:
             clausula_tempo = " AND (" + " AND ".join(filtros_data) + " OR vencimento = '' OR vencimento IS NULL)"
             query += clausula_tempo
         
-        # Ordenação: Sem data primeiro, depois por vencimento
         query += " ORDER BY CASE WHEN vencimento = '' THEN 0 ELSE 1 END, vencimento ASC"
         
         self.cursor.execute(query, params)
@@ -426,7 +411,7 @@ class AppControleVendas:
         total = 0
         descricoes_no_mes = []
 
-        # 1. Carrega dados REAIS do banco
+        # 1. Carrega dados REAIS
         for row in rows:
             descricoes_no_mes.append(row[1]) 
             
@@ -441,60 +426,134 @@ class AppControleVendas:
             val_fmt = "R$ {:,.2f}".format(row[3]).replace(",", "X").replace(".", ",").replace("X", ".")
             status = row[5]
             
-            # Tuple: ID, Desc, Cat, Val, Venc, Status
+            # ORDEM: ID, Desc, Cat, Val, Venc, Status
             self.tree_desp.insert("", "end", values=(row[0], row[1], row[2], val_fmt, venc_br, status), tags=(tag,))
             total += row[3]
 
-        # 2. PROJEÇÃO AUTOMÁTICA DE FIXAS
-        # Se estamos vendo um mês específico, o sistema busca fixas antigas e projeta
+        # 2. PROJEÇÃO DE FIXAS
         if mes != 'Todos' and ano != 'Todos':
             self.cursor.execute("SELECT DISTINCT descricao, valor, categoria FROM despesas WHERE categoria='Fixa'")
             fixas_historico = self.cursor.fetchall()
             
             for desc, val, cat in fixas_historico:
-                # Se a despesa fixa NÃO está lançada nesse mês ainda
                 if desc not in descricoes_no_mes:
                     val_fmt = "R$ {:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
                     id_virtual = f"FIX_||{desc}||{val}"
-                    
                     self.tree_desp.insert("", 0, values=(id_virtual, desc, cat, val_fmt, "A DEFINIR", "A LANÇAR"), tags=('sem_data',))
             
         self.lbl_total_despesas.config(text="R$ {:,.2f}".format(total).replace(",", "X").replace(".", ",").replace("X", "."))
 
-    def editar_data_despesa(self, event):
-        """Permite editar data ou confirmar uma projeção fixa"""
-        sel = self.tree_desp.selection()
-        if not sel: return
-        item = self.tree_desp.item(sel)
+    def abrir_edicao_despesa(self, event):
+        """NOVA FUNÇÃO: Abre janela completa para editar despesa ou confirmar projeção"""
+        selected = self.tree_desp.selection()
+        if not selected: return
+        item = self.tree_desp.item(selected)
         
+        # Dados da linha selecionada
         id_conta = item['values'][0]
+        desc_atual = item['values'][1]
+        cat_atual = item['values'][2]
+        val_atual_fmt = item['values'][3]
+        venc_atual = item['values'][4]
+        status_atual = item['values'][5]
         
-        nova_data = simpledialog.askstring("Definir Data", "Digite a data (dd/mm/aaaa):", parent=self.top_desp)
-        if not nova_data: return
-
-        try:
-            data_db = datetime.strptime(nova_data, '%d/%m/%Y').strftime("%Y-%m-%d")
-        except:
-            messagebox.showerror("Erro", "Data inválida. Use dia/mês/ano", parent=self.top_desp)
-            return
-
-        # Verifica se é PROJEÇÃO (FIX_) ou REAL
-        if str(id_conta).startswith("FIX_"):
-            partes = str(id_conta).split("||")
-            desc_real = partes[1]
-            val_real = float(partes[2])
+        # Limpa formatação do valor para edição
+        val_limpo = str(val_atual_fmt).replace("R$ ", "").replace(".", "").replace(",", ".")
+        
+        # Configura Janela
+        popup = Toplevel(self.top_desp)
+        popup.title("Editar Despesa")
+        popup.geometry("450x450")
+        popup.configure(bg=COLOR_BG)
+        
+        lbl_style = {"bg": COLOR_BG, "fg": COLOR_PRIMARY, "font": FONT_BOLD, "anchor": "w"}
+        entry_style = {"font": FONT_MAIN, "bd": 2, "relief": "groove", "bg": "white"}
+        
+        tk.Label(popup, text="Detalhes da Despesa", bg=COLOR_PRIMARY, fg=COLOR_SECONDARY, font=FONT_HEADER, pady=10).pack(fill="x")
+        
+        frame_c = tk.Frame(popup, bg=COLOR_BG, padx=20, pady=20)
+        frame_c.pack(fill="both", expand=True)
+        
+        # Campos
+        tk.Label(frame_c, text="Descrição:", **lbl_style).pack(fill="x")
+        edit_desc = tk.Entry(frame_c, **entry_style)
+        edit_desc.pack(fill="x", pady=(0, 10))
+        edit_desc.insert(0, desc_atual)
+        
+        tk.Label(frame_c, text="Categoria:", **lbl_style).pack(fill="x")
+        edit_cat = ttk.Combobox(frame_c, values=CATEGORIAS_DESPESA, font=FONT_MAIN)
+        edit_cat.pack(fill="x", pady=(0, 10))
+        edit_cat.set(cat_atual)
+        
+        tk.Label(frame_c, text="Valor (R$):", **lbl_style).pack(fill="x")
+        edit_val = tk.Entry(frame_c, **entry_style)
+        edit_val.pack(fill="x", pady=(0, 10))
+        edit_val.insert(0, val_limpo)
+        
+        # Data com Calendário
+        tk.Label(frame_c, text="Vencimento:", **lbl_style).pack(fill="x")
+        f_data = tk.Frame(frame_c, bg=COLOR_BG)
+        f_data.pack(fill="x", pady=(0, 10))
+        
+        edit_venc = tk.Entry(f_data, **entry_style)
+        edit_venc.pack(side="left", fill="x", expand=True)
+        if venc_atual != "A DEFINIR" and venc_atual != "SEM DATA":
+            edit_venc.insert(0, venc_atual)
             
-            # Cria a conta de verdade agora
-            self.cursor.execute("INSERT INTO despesas (descricao, categoria, valor, vencimento, status) VALUES (?, ?, ?, ?, ?)",
-                                (desc_real, 'Fixa', val_real, data_db, 'PENDENTE'))
+        tk.Button(f_data, text="DATA", bg=COLOR_SECONDARY, fg=COLOR_PRIMARY, bd=1, 
+                  command=lambda: self.abrir_popup_calendario(edit_venc)).pack(side="left", padx=5)
+        
+        tk.Label(frame_c, text="Status:", **lbl_style).pack(fill="x")
+        edit_status = ttk.Combobox(frame_c, values=STATUS_DESPESA, font=FONT_MAIN)
+        edit_status.pack(fill="x", pady=(0, 10))
+        # Ajusta status se for projeção
+        if status_atual == "A LANÇAR":
+            edit_status.set("PENDENTE")
         else:
-            self.cursor.execute("UPDATE despesas SET vencimento=? WHERE id=?", (data_db, id_conta))
+            edit_status.set(status_atual)
             
-        self.conn.commit()
-        self.carregar_dados_despesas()
+        def salvar():
+            try:
+                # Validações
+                n_desc = edit_desc.get().strip().upper()
+                n_cat = edit_cat.get()
+                n_val_str = edit_val.get().replace(",", ".")
+                n_venc_br = edit_venc.get()
+                n_status = edit_status.get()
+                
+                if not n_val_str: n_val = 0.0
+                else: n_val = float(n_val_str)
+                
+                try:
+                    n_venc_db = datetime.strptime(n_venc_br, '%d/%m/%Y').strftime("%Y-%m-%d")
+                except:
+                    # Se deixar vazio ou inválido, salva como vazio (sem data)
+                    n_venc_db = ""
+                
+                # Lógica de Salvar (Novo ou Edição)
+                if str(id_conta).startswith("FIX_"):
+                    # É PROJEÇÃO: Cria nova
+                    self.cursor.execute("INSERT INTO despesas (descricao, categoria, valor, vencimento, status) VALUES (?, ?, ?, ?, ?)",
+                                        (n_desc, n_cat, n_val, n_venc_db, n_status))
+                else:
+                    # É EXISTENTE: Atualiza
+                    self.cursor.execute("""
+                        UPDATE despesas SET descricao=?, categoria=?, valor=?, vencimento=?, status=?
+                        WHERE id=?
+                    """, (n_desc, n_cat, n_val, n_venc_db, n_status, id_conta))
+                
+                self.conn.commit()
+                popup.destroy()
+                self.carregar_dados_despesas()
+                
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao salvar: {e}")
+
+        tk.Button(popup, text="SALVAR", bg=COLOR_PRIMARY, fg=COLOR_SECONDARY, font=FONT_BOLD, 
+                  command=salvar).pack(fill="x", side="bottom", pady=10, padx=20)
 
     def pagar_despesa(self):
-        """Marca conta como PAGO (Cria se for virtual)"""
+        """Marca como PAGO. Se for projeção, cria e paga."""
         sel = self.tree_desp.selection()
         if not sel: return
         item = self.tree_desp.item(sel)
@@ -505,7 +564,6 @@ class AppControleVendas:
             desc_real = partes[1]
             val_real = float(partes[2])
             
-            # Define data padrão como dia 10 do filtro selecionado
             mes_idx = MESES_FILTRO.get(self.combo_mes_desp.get())
             ano = self.combo_ano_desp.get()
             if mes_idx and ano != 'Todos':
@@ -522,7 +580,6 @@ class AppControleVendas:
         self.carregar_dados_despesas()
 
     def deletar_despesa(self):
-        """Remove despesa do banco"""
         sel = self.tree_desp.selection()
         if not sel: return
         
@@ -539,9 +596,11 @@ class AppControleVendas:
         self.conn.commit()
         self.carregar_dados_despesas()
 
-
+    # ==========================================
+    # INTERFACE PRINCIPAL (PEDIDOS)
+    # ==========================================
     def criar_area_filtros(self):
-        """Barra de ferramentas superior para filtrar a visualização da tabela"""
+        """Barra de filtros principal"""
         frame_topo = tk.Frame(self.root, bg=COLOR_BG, pady=15, padx=20)
         frame_topo.pack(fill="x")
         lbl_style = {"bg": COLOR_BG, "fg": COLOR_PRIMARY, "font": FONT_BOLD}
@@ -564,29 +623,27 @@ class AppControleVendas:
         tk.Label(frame_topo, text="Buscar Cliente:", **lbl_style).pack(side="left", padx=(30, 5))
         self.entry_filtro_nome = tk.Entry(frame_topo, width=25, font=FONT_MAIN, bd=2, relief="groove")
         self.entry_filtro_nome.pack(side="left")
-        self.entry_filtro_nome.bind("<KeyRelease>", self.carregar_dados) # Filtra enquanto digita
+        self.entry_filtro_nome.bind("<KeyRelease>", self.carregar_dados)
 
     def criar_formulario(self):
-        """Área de input de dados para novos pedidos"""
+        """Área de input de Pedidos"""
         self.frame_form = ttk.LabelFrame(self.root, text="  Novo Pedido  ", padding=15)
         self.frame_form.pack(fill="x", padx=20, pady=5)
         lbl_style = {"bg": COLOR_BG, "fg": COLOR_TEXT, "font": FONT_MAIN, "anchor": "w"}
         entry_style = {"font": FONT_MAIN, "bd": 2, "relief": "groove", "bg": "white"}
         
-        # Nome do Cliente (implementei um "autocomplete" para facilitar)
+        # Nome do Cliente
         tk.Label(self.frame_form, text="Nome Cliente:", **lbl_style).grid(row=0, column=0, sticky="w")
         self.entry_nome_novo = tk.Entry(self.frame_form, width=30, **entry_style)
         self.entry_nome_novo.grid(row=0, column=1, padx=5, pady=5)
         self.entry_nome_novo.bind('<KeyRelease>', self.atualizar_lista_clientes)
         self.entry_nome_novo.bind('<Down>', lambda e: self.mover_foco_lista(self.listbox_clientes))
         
-        # Lista flutuante de sugestões
         self.listbox_clientes = tk.Listbox(self.root, width=45, height=5, font=FONT_MAIN, bg="#FFFDE7", bd=2, relief="ridge")
         self.listbox_clientes.bind("<<ListboxSelect>>", self.selecionar_cliente)
         self.listbox_clientes.bind("<Return>", self.selecionar_cliente)
         self.listbox_clientes.bind("<Motion>", self.destacar_no_mouse)
         
-        # Cidade e Vendedor
         tk.Label(self.frame_form, text="Cidade:", **lbl_style).grid(row=0, column=2, sticky="w", padx=(20,0))
         self.combo_cidade = ttk.Combobox(self.frame_form, values=CIDADES, width=18, font=FONT_MAIN)
         self.combo_cidade.grid(row=0, column=3, padx=5, pady=5)
@@ -596,7 +653,7 @@ class AppControleVendas:
         self.combo_vendedor.current(0) 
         self.combo_vendedor.grid(row=0, column=5, padx=5, pady=5)
         
-        # Produto (Com "Autocomplete")
+        # Produto
         tk.Label(self.frame_form, text="Produto/Fórmula:", **lbl_style).grid(row=1, column=0, sticky="w", pady=10)
         self.entry_produto = tk.Entry(self.frame_form, width=30, **entry_style)
         self.entry_produto.grid(row=1, column=1, padx=5, pady=10)
@@ -625,7 +682,7 @@ class AppControleVendas:
                             command=lambda: self.abrir_popup_calendario(self.entry_entrega))
         btn_cal.pack(side="left", padx=2)
         
-        # Status e Botão Salvar
+        # Status e Salvar
         tk.Label(self.frame_form, text="Status:", **lbl_style).grid(row=1, column=6, sticky="w", padx=(20,0))
         self.combo_status = ttk.Combobox(self.frame_form, values=STATUS_OPCOES, width=15, font=FONT_MAIN)
         self.combo_status.current(0) 
@@ -645,7 +702,6 @@ class AppControleVendas:
         cols = ("ID", "Data", "Nome", "Cidade", "Vendedor", "Produto", "Valor", "Entrega", "Status")
         self.tree = ttk.Treeview(frame_lista, columns=cols, show="headings", style="Treeview")
         
-        # Configuração das colunas
         config_cols = {
             "Data": (90, "center"), "Nome": (200, "center"), "Cidade": (100, "center"),
             "Vendedor": (90, "center"), "Produto": (200, "center"), "Valor": (100, "center"),
@@ -658,7 +714,6 @@ class AppControleVendas:
         
         self.tree.bind("<Double-1>", self.abrir_janela_edicao)
         
-        # Tags de cores para status
         self.tree.tag_configure('orcamento', background='#FFF3CD')
         self.tree.tag_configure('confirmado', background='#C8E6C9') 
         self.tree.tag_configure('cancelado', background='#FFEBEE')
@@ -687,8 +742,7 @@ class AppControleVendas:
         btn_confirmar.pack(side="left")
 
     def criar_tabela(self):
-        """Inicializa o banco de dados se não existir"""
-        # Tabela de Pedidos
+        """Inicializa tabelas do banco"""
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS pedidos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -696,7 +750,6 @@ class AppControleVendas:
                 valor REAL, status TEXT, vendedor TEXT, entrega TEXT
             )
         """)
-        # Tabela de Despesas (Financeiro)
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS despesas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -707,7 +760,7 @@ class AppControleVendas:
         self.conn.commit()
 
     def abrir_popup_calendario(self, entry_alvo):
-        """Abre um widget de calendário para seleção visual de data (cliente exigiu), surgiram vários bugs com ele, mas nessa implementação creio estar tudo ok"""
+        """Popup de calendário"""
         if isinstance(entry_alvo, tk.Entry):
             parent = entry_alvo.winfo_toplevel()
         else:
@@ -716,7 +769,6 @@ class AppControleVendas:
         top_cal = Toplevel(parent)
         top_cal.title("Selecione a Data")
         
-        # Centraliza o popup no mouse
         x = self.root.winfo_pointerx()
         y = self.root.winfo_pointery()
         top_cal.geometry(f"+{x}+{y}")
@@ -737,9 +789,8 @@ class AppControleVendas:
             
         cal.bind("<<CalendarSelected>>", data_selecionada)
 
-    # Autocomplete
+    # --- Autocomplete Helpers ---
     def carregar_sugestoes_memoria(self):
-        """Carrega nomes únicos do banco para a RAM a fim de agilizar o autocomplete"""
         try:
             self.cursor.execute("SELECT DISTINCT nome FROM pedidos ORDER BY nome")
             self.lista_clientes_db = [row[0] for row in self.cursor.fetchall()]
@@ -749,7 +800,6 @@ class AppControleVendas:
             pass
 
     def destacar_no_mouse(self, event):
-        """Highlight visual ao passar o mouse na lista de sugestões"""
         listbox = event.widget
         try:
             index = listbox.nearest(event.y)
@@ -760,7 +810,6 @@ class AppControleVendas:
             pass
 
     def mover_foco_lista(self, listbox):
-        """Permite navegar na lista de sugestões usando a seta para baixo"""
         if listbox.winfo_ismapped() and listbox.size() > 0:
             listbox.focus_set()
             listbox.selection_clear(0, tk.END)
@@ -768,21 +817,17 @@ class AppControleVendas:
             listbox.activate(0)
 
     def atualizar_lista_clientes(self, event):
-        """Filtra a lista de clientes conforme o usuário digita"""
-        if event.keysym in ['Up', 'Down', 'Return', 'Left', 'Right', 'Tab']: 
-            return
+        if event.keysym in ['Up', 'Down', 'Return', 'Left', 'Right', 'Tab']: return
         digitado = self.entry_nome_novo.get()
         if digitado == '':
             self.listbox_clientes.place_forget()
             return
         lista_filtrada = [x for x in self.lista_clientes_db if digitado.lower() in x.lower()]
-        
         if lista_filtrada:
             self.listbox_clientes.delete(0, tk.END)
             for i, nome in enumerate(lista_filtrada): 
                 self.listbox_clientes.insert(tk.END, nome)
                 if i % 2 == 0: self.listbox_clientes.itemconfigure(i, background="#f0f0f0")
-            
             x = self.entry_nome_novo.winfo_rootx() - self.root.winfo_rootx()
             y = self.entry_nome_novo.winfo_rooty() + self.entry_nome_novo.winfo_height() - self.root.winfo_rooty()
             self.listbox_clientes.place(x=x, y=y, width=self.entry_nome_novo.winfo_width())
@@ -791,7 +836,6 @@ class AppControleVendas:
             self.listbox_clientes.place_forget()
 
     def selecionar_cliente(self, event):
-        """Preenche os campos ao clicar em uma sugestão de cliente"""
         try:
             selection = self.listbox_clientes.curselection()
             if selection:
@@ -800,12 +844,10 @@ class AppControleVendas:
                 self.entry_nome_novo.insert(0, nome_escolhido)
                 self.listbox_clientes.place_forget()
                 self.preencher_cidade_automatica(nome_escolhido)
-                self.entry_produto.focus_set() # Pula para o próximo campo
-        except:
-            pass
+                self.entry_produto.focus_set()
+        except: pass
 
     def atualizar_lista_produtos(self, event):
-        """Mesma lógica de autocomplete, para produtos"""
         if event.keysym in ['Up', 'Down', 'Return', 'Left', 'Right', 'Tab']: return
         digitado = self.entry_produto.get()
         if digitado == '':
@@ -833,11 +875,9 @@ class AppControleVendas:
                 self.entry_produto.insert(0, prod_escolhido)
                 self.listbox_produtos.place_forget()
                 self.entry_valor.focus_set()
-        except: 
-            pass
+        except: pass
 
     def preencher_cidade_automatica(self, nome_cliente):
-        """Inteligência: Busca a última cidade usada por esse cliente no histórico"""
         self.cursor.execute("SELECT cidade FROM pedidos WHERE nome = ? ORDER BY id DESC LIMIT 1", (nome_cliente,))
         resultado = self.cursor.fetchone()
         if resultado:
@@ -846,10 +886,9 @@ class AppControleVendas:
             else: self.combo_cidade.set(cidade_encontrada)
 
     def abrir_janela_edicao(self, event):
-        """Abre popup modal para editar um pedido existente"""
+        """Popup de edição de pedido"""
         selected = self.tree.selection()
-        if not selected: 
-            return
+        if not selected: return
         item = self.tree.item(selected)
         dados = item['values']
         pedido_id = dados[0]
@@ -893,10 +932,8 @@ class AppControleVendas:
         tk.Label(frame_row2, text="Valor (R$):", **lbl_style).pack(side="left")
         edit_valor = tk.Entry(frame_row2, width=15, **entry_style)
         edit_valor.pack(side="left", padx=(5, 20))
-        
         valor_limpo = str(dados[6]).replace("R$ ", "").replace(".", "").replace(",", ".")
         edit_valor.insert(0, valor_limpo)
-        
         tk.Label(frame_row2, text="Status:", **lbl_style).pack(side="left")
         edit_status = ttk.Combobox(frame_row2, values=STATUS_OPCOES, width=15, font=FONT_MAIN)
         edit_status.pack(side="left", padx=5)
@@ -904,7 +941,6 @@ class AppControleVendas:
 
         frame_row3 = tk.Frame(frame_conteudo, bg=COLOR_BG)
         frame_row3.pack(fill="x", pady=(10,0))
-        
         f_ped = tk.Frame(frame_row3, bg=COLOR_BG)
         f_ped.pack(side="left", expand=True, fill="x", padx=(0,10))
         tk.Label(f_ped, text="Data Pedido:", **lbl_style).pack(anchor="w")
@@ -929,18 +965,15 @@ class AppControleVendas:
             try:
                 val_str = edit_valor.get().replace(",", ".")
                 novo_valor = float(val_str)
-                
                 try:
                     dt_ped_obj = datetime.strptime(edit_data_pedido.get(), '%d/%m/%Y')
                     dt_ped_db = dt_ped_obj.strftime("%Y-%m-%d")
                 except: dt_ped_db = edit_data_pedido.get()
-                
                 try:
                     dt_ent_obj = datetime.strptime(edit_data_entrega.get(), '%d/%m/%Y')
                     dt_ent_db = dt_ent_obj.strftime("%Y-%m-%d")
                 except: dt_ent_db = edit_data_entrega.get()
                 
-                # SQL
                 self.cursor.execute("""
                     UPDATE pedidos SET
                         data = ?, nome = ?, cidade = ?, produto = ?,
@@ -960,31 +993,25 @@ class AppControleVendas:
                   command=salvar_alteracoes).pack(fill="x", side="bottom")
 
     def adicionar_pedido(self):
-        """Salva um novo registro no banco"""
         try:
             val_str = self.entry_valor.get().replace(",", ".")
             if not val_str: 
                 messagebox.showwarning("Atenção", "Preencha o valor.")
                 return
             valor = float(val_str)
-            
             data_hoje = datetime.now().strftime("%Y-%m-%d")
-            nome_cliente = self.entry_nome_novo.get().strip().upper() # Força Maiúsculas(exigencia do cliente)
-            
+            nome_cliente = self.entry_nome_novo.get().strip().upper() 
             if not nome_cliente:
                  messagebox.showwarning("Atenção", "Preencha o nome do cliente.")
                  return
-                 
             vendedor = self.combo_vendedor.get().strip()
             produto = self.entry_produto.get().strip().upper()
-            
             data_entrega_br = self.entry_entrega.get()
             try:
                 dt_obj = datetime.strptime(data_entrega_br, '%d/%m/%Y')
                 data_entrega_db = dt_obj.strftime("%Y-%m-%d")
             except:
                 data_entrega_db = data_entrega_br
-                
             self.cursor.execute("""
                 INSERT INTO pedidos (data, nome, cidade, produto, valor, status, vendedor, entrega)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -996,22 +1023,15 @@ class AppControleVendas:
             self.entry_valor.delete(0, 'end')
             self.entry_entrega.delete(0, tk.END)
             self.entry_entrega.insert(0, datetime.now().strftime("%d/%m/%Y"))
-            
             self.listbox_clientes.place_forget()
             self.listbox_produtos.place_forget()
-            
             self.carregar_dados()
             self.carregar_sugestoes_memoria()
             messagebox.showinfo("Sucesso", "Pedido salvo!")
-            
         except ValueError:
             messagebox.showerror("Erro", "Valor inválido.")
 
     def carregar_dados(self, event=None, manter_selecao=False):
-        """
-        Lê os dados do banco e mostra na tabela.
-        Suporta filtros de mês, ano e busca por nome.
-        """
         id_selecionado = None
         if manter_selecao:
             selected = self.tree.selection()
@@ -1023,14 +1043,12 @@ class AppControleVendas:
         for i in self.tree.get_children():
             self.tree.delete(i)
             
-        # Filtros
         mes_selecionado = self.combo_filtro_mes.get()
         ano_selecionado = self.combo_filtro_ano.get()
         nome_buscado = self.entry_filtro_nome.get()
         
         query = "SELECT * FROM pedidos WHERE 1=1"
         params = []
-        
         if mes_selecionado != 'Todos':
             query += " AND strftime('%m', data) = ?"
             params.append(MESES_FILTRO[mes_selecionado])
@@ -1040,47 +1058,34 @@ class AppControleVendas:
         if nome_buscado:
             query += " AND nome LIKE ?"
             params.append(f"%{nome_buscado}%")
-            
         query += " ORDER BY data DESC"
-        
         try:
             self.cursor.execute(query, params)
             rows = self.cursor.fetchall()
-            
             total_confirmado = 0
-            
             for row in rows:
                 row_id = row[0]
-                # Converte data YYYY-MM-DD para DD/MM/YYYY
                 try: data_br = datetime.strptime(row[1], "%Y-%m-%d").strftime("%d/%m/%Y")
                 except: data_br = row[1]
-                
                 nome = row[2]
                 cidade = row[3]
                 produto = row[4]
-                
-                # Formatação de Moeda Brasileira
                 valor_fmt = "R$ {:,.2f}".format(row[5]).replace(",", "X").replace(".", ",").replace("X", ".")
-                
                 status = row[6]
                 try: vendedor = row[7] if row[7] else "-"
                 except: vendedor = "-"
-                
                 try: 
                     entrega_raw = row[8]
                     if entrega_raw:
                         entrega_br = datetime.strptime(entrega_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     else: entrega_br = "-"
                 except: entrega_br = "-"
-                
-                # Define cor da linha baseada no status
                 tag_cor = 'orcamento'
                 if status == 'CONFIRMADO': tag_cor = 'confirmado'
                 elif status == 'CANCELADO': tag_cor = 'cancelado'
                 
                 item_id = self.tree.insert("", "end", values=(row_id, data_br, nome, cidade, vendedor, produto, valor_fmt, entrega_br, status), tags=(tag_cor,))
                 
-                # Restaura seleção
                 if manter_selecao and id_selecionado and row_id == id_selecionado:
                     self.tree.selection_set(item_id)
                     self.tree.see(item_id)
@@ -1088,18 +1093,13 @@ class AppControleVendas:
                 if status == "CONFIRMADO":
                     total_confirmado += row[5]
             
-            # Atualiza o totalizador (Cache)
             total_fmt = "R$ {:,.2f}".format(total_confirmado).replace(",", "X").replace(".", ",").replace("X", ".")
             self.total_cache = total_fmt
-            
-            # Só mostra se estiver clicado (Lógica de Privacidade)
             if str(self.lbl_total.cget("text")) != "-------":
                  self.lbl_total.config(text=self.total_cache)
-                
         except: pass
 
     def confirmar_pedido(self):
-        """Atalho rápido para mudar status para CONFIRMADO"""
         selected = self.tree.selection()
         if not selected: return
         item = self.tree.item(selected)
@@ -1109,7 +1109,6 @@ class AppControleVendas:
         self.carregar_dados()
 
     def cancelar_pedido(self):
-        """Atalho rápido para mudar status para CANCELADO"""
         selected = self.tree.selection()
         if not selected: return
         item = self.tree.item(selected)
@@ -1120,7 +1119,6 @@ class AppControleVendas:
         self.carregar_dados()
 
     def deletar_pedido(self):
-        """Remove permanentemente do banco"""
         selected = self.tree.selection()
         if not selected: return
         if not messagebox.askyesno("Excluir", "ATENÇÃO: Isso apagará o pedido do banco de dados.\nConfirmar exclusão?"): return
@@ -1133,7 +1131,6 @@ class AppControleVendas:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    # Tenta carregar ícone da janela
     try: 
         if os.path.exists("logo.png"):
             icon = ImageTk.PhotoImage(file="logo.png")
