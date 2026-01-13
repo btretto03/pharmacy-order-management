@@ -12,7 +12,7 @@
 # -------------------------------------------------------------------------
 
 import tkinter as tk
-from tkinter import ttk, messagebox, Toplevel
+from tkinter import ttk, messagebox, Toplevel, simpledialog # Adicionado simpledialog
 import sqlite3
 from datetime import datetime
 from tkcalendar import Calendar
@@ -27,6 +27,11 @@ COLOR_BG = "#F4F7F6"         # Fundo Off-White
 COLOR_TEXT = "#333333"       # Texto (preto)
 COLOR_SUCCESS = "#2E7D32"    # Verde (escuro já que em alguns monitores se confundia com branco)
 COLOR_DANGER = "#C62828"     # Vermelho
+
+# --- CORES DE STATUS (DESPESAS)
+COLOR_BG_PENDENTE = '#FFEBEE' 
+COLOR_BG_PAGO = '#C8E6C9'     
+COLOR_BG_SEM_DATA = '#E0E0E0' 
 
 FONT_MAIN = ("Helvetica", 10)
 FONT_BOLD = ("Helvetica", 10, "bold")
@@ -52,6 +57,7 @@ CIDADES = [
 VENDEDORES = ['Vendedora 1', 'Vendedora 2', 'Vendedora 3']
 
 STATUS_OPCOES = ['ORÇAMENTO', 'CONFIRMADO', 'CANCELADO']
+CATEGORIAS_DESPESA = ['Fixa', 'Variável', 'Pessoal/Retirada', 'Impostos', 'Fornecedor', 'Outros']
 
 # Filtros de data
 MESES_FILTRO = {
@@ -168,6 +174,13 @@ class AppControleVendas:
         tk.Label(title_container, text="SISTEMA DE GESTÃO", bg=COLOR_PRIMARY, fg=COLOR_SECONDARY, font=FONT_TITLE).pack(anchor="w")
         tk.Label(title_container, text="Controle de Vendas e Pedidos", bg=COLOR_PRIMARY, fg="white", font=("Helvetica", 12)).pack(anchor="w")
 
+        # --- BOTÃO DE DESPESAS (COM SENHA) ---
+        # Botão discreto para área financeira
+        btn_desp = tk.Button(header_frame, text="💲 DESPESAS", bg=COLOR_SECONDARY, fg=COLOR_PRIMARY, 
+                             font=("Arial", 10, "bold"), bd=2, relief="raised", cursor="hand2",
+                             command=self.pedir_senha_custom) 
+        btn_desp.pack(side="right", padx=20, ipady=5, ipadx=10)
+
         # ÁREA DO FATURAMENTO (Recurso de Privacidade)
         # Como não era interessante mostrar o faturamento sempre, criei um botao que só o mostra
         # quando estiver pressionado
@@ -190,6 +203,342 @@ class AppControleVendas:
 
     def esconder_faturamento(self, event):
         self.lbl_total.config(text="-------")
+
+    # ==========================================
+    # LÓGICA DE SENHA E MÓDULO FINANCEIRO
+    # ==========================================
+    def pedir_senha_custom(self):
+        """Cria um popup de senha onde o ENTER funciona garantido"""
+        pop_senha = Toplevel(self.root)
+        pop_senha.title("Acesso Restrito")
+        
+        # Centraliza
+        largura = 300
+        altura = 150
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (largura // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (altura // 2)
+        pop_senha.geometry(f"{largura}x{altura}+{x}+{y}")
+        pop_senha.configure(bg=COLOR_BG)
+        pop_senha.transient(self.root)
+        pop_senha.grab_set() 
+        
+        tk.Label(pop_senha, text="Digite a senha de acesso:", bg=COLOR_BG, font=FONT_BOLD).pack(pady=(20, 5))
+        
+        ent_senha = tk.Entry(pop_senha, show="*", font=("Arial", 12), justify='center')
+        ent_senha.pack(pady=5, padx=20)
+        ent_senha.focus_force() 
+        
+        def verificar(event=None):
+            senha = ent_senha.get()
+            if senha == "1234":
+                pop_senha.destroy()
+                self.abrir_janela_despesas()
+            else:
+                messagebox.showerror("Erro", "Senha incorreta!", parent=pop_senha)
+                ent_senha.delete(0, 'end')
+        
+        ent_senha.bind('<Return>', verificar)
+        
+        btn_ok = tk.Button(pop_senha, text="ENTRAR", bg=COLOR_PRIMARY, fg="white", command=verificar)
+        btn_ok.pack(pady=10)
+
+    def abrir_janela_despesas(self):
+        """Abre a janela principal do módulo financeiro"""
+        self.top_desp = Toplevel(self.root)
+        self.top_desp.title("Gerenciamento de Despesas")
+        self.top_desp.geometry("1100x700")
+        self.top_desp.configure(bg=COLOR_BG)
+        
+        # Filtros e Topo
+        frame_topo = tk.Frame(self.top_desp, bg=COLOR_BG, pady=15, padx=20)
+        frame_topo.pack(fill="x")
+        lbl_style = {"bg": COLOR_BG, "fg": COLOR_PRIMARY, "font": FONT_BOLD}
+        
+        # --- FILTRO MÊS ---
+        tk.Label(frame_topo, text="Mês:", **lbl_style).pack(side="left", padx=(0, 5))
+        self.combo_mes_desp = ttk.Combobox(frame_topo, values=list(MESES_FILTRO.keys()), width=12, state="readonly", font=FONT_MAIN)
+        try: self.combo_mes_desp.current(datetime.now().month)
+        except: self.combo_mes_desp.current(0)
+        self.combo_mes_desp.pack(side="left")
+        self.combo_mes_desp.bind("<<ComboboxSelected>>", self.carregar_dados_despesas)
+        
+        # --- FILTRO ANO ---
+        tk.Label(frame_topo, text="Ano:", **lbl_style).pack(side="left", padx=(15, 5))
+        self.combo_ano_desp = ttk.Combobox(frame_topo, values=ANOS_FILTRO, width=10, state="readonly", font=FONT_MAIN)
+        ano_atual = str(datetime.now().year)
+        if ano_atual in ANOS_FILTRO: self.combo_ano_desp.set(ano_atual)
+        else: self.combo_ano_desp.current(0)
+        self.combo_ano_desp.pack(side="left")
+        self.combo_ano_desp.bind("<<ComboboxSelected>>", self.carregar_dados_despesas)
+
+        # TOTALIZADOR FINANCEIRO
+        tk.Label(frame_topo, text="Total Despesas:", **lbl_style).pack(side="left", padx=(30, 5))
+        self.lbl_total_despesas = tk.Label(frame_topo, text="R$ 0,00", bg=COLOR_BG, fg=COLOR_DANGER, font=("Helvetica", 14, "bold"))
+        self.lbl_total_despesas.pack(side="left")
+        
+        # Formulário de Nova Despesa
+        frame_form = ttk.LabelFrame(self.top_desp, text="  Nova Conta a Pagar  ", padding=15)
+        frame_form.pack(fill="x", padx=20, pady=5)
+        
+        lbl_form = {"bg": COLOR_BG, "fg": COLOR_TEXT, "font": FONT_MAIN, "anchor": "w"}
+        entry_form = {"font": FONT_MAIN, "bd": 2, "relief": "groove", "bg": "white"}
+        
+        tk.Label(frame_form, text="Descrição:", **lbl_form).grid(row=0, column=0, sticky="w")
+        self.entry_desc_desp = tk.Entry(frame_form, width=30, **entry_form)
+        self.entry_desc_desp.grid(row=0, column=1, padx=5, pady=5)
+        
+        tk.Label(frame_form, text="Categoria:", **lbl_form).grid(row=0, column=2, sticky="w", padx=15)
+        self.combo_cat_desp = ttk.Combobox(frame_form, values=CATEGORIAS_DESPESA, width=18, font=FONT_MAIN)
+        self.combo_cat_desp.current(0)
+        self.combo_cat_desp.grid(row=0, column=3, padx=5)
+        
+        tk.Label(frame_form, text="Valor (R$):", **lbl_form).grid(row=0, column=4, sticky="w", padx=15)
+        self.entry_val_desp = tk.Entry(frame_form, width=12, **entry_form)
+        self.entry_val_desp.grid(row=0, column=5, padx=5)
+        
+        tk.Label(frame_form, text="Vencimento:", **lbl_form).grid(row=0, column=6, sticky="w", padx=15)
+        self.entry_venc_desp = tk.Entry(frame_form, width=12, **entry_form)
+        self.entry_venc_desp.grid(row=0, column=7, padx=5)
+        self.entry_venc_desp.insert(0, datetime.now().strftime("%d/%m/%Y"))
+        
+        tk.Button(frame_form, text="DATA", bg=COLOR_SECONDARY, fg=COLOR_PRIMARY, bd=1, 
+                  command=lambda: self.abrir_popup_calendario(self.entry_venc_desp)).grid(row=0, column=8)
+                  
+        tk.Button(frame_form, text="LANÇAR", bg=COLOR_DANGER, fg="white", font=FONT_BOLD, 
+                  command=self.adicionar_despesa).grid(row=0, column=9, padx=20)
+        
+        # Atalhos de Teclado
+        self.entry_desc_desp.bind('<Return>', lambda e: self.adicionar_despesa())
+        self.entry_val_desp.bind('<Return>', lambda e: self.adicionar_despesa())
+        self.entry_venc_desp.bind('<Return>', lambda e: self.adicionar_despesa())
+
+        # Tabela de Despesas
+        frame_lista = ttk.LabelFrame(self.top_desp, text="  Contas do Mês  ", padding=10)
+        frame_lista.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Configuração de Colunas Centralizadas (Descrição primeiro)
+        cols = ("ID", "Descrição", "Categoria", "Valor", "Vencimento", "Status")
+        self.tree_desp = ttk.Treeview(frame_lista, columns=cols, show="headings", style="Treeview")
+        
+        # Oculta a coluna ID
+        self.tree_desp["displaycolumns"] = ("Descrição", "Categoria", "Valor", "Vencimento", "Status")
+        
+        self.tree_desp.heading("Descrição", text="Descrição")
+        self.tree_desp.column("Descrição", width=300, anchor="center")
+        self.tree_desp.heading("Categoria", text="Categoria")
+        self.tree_desp.column("Categoria", width=150, anchor="center")
+        self.tree_desp.heading("Valor", text="Valor")
+        self.tree_desp.column("Valor", width=120, anchor="center")
+        self.tree_desp.heading("Vencimento", text="Vencimento")
+        self.tree_desp.column("Vencimento", width=100, anchor="center")
+        self.tree_desp.heading("Status", text="Status")
+        self.tree_desp.column("Status", width=100, anchor="center")
+        
+        # Cores e Eventos
+        self.tree_desp.tag_configure('pendente', background=COLOR_BG_PENDENTE)
+        self.tree_desp.tag_configure('pago', background=COLOR_BG_PAGO)
+        self.tree_desp.tag_configure('sem_data', background=COLOR_BG_SEM_DATA) 
+        
+        self.tree_desp.bind("<Double-1>", self.editar_data_despesa) 
+
+        self.tree_desp.pack(fill="both", expand=True)
+        
+        # Rodapé Financeiro
+        frame_foot = tk.Frame(self.top_desp, bg=COLOR_BG, pady=10)
+        frame_foot.pack(fill="x", padx=20)
+        
+        tk.Button(frame_foot, text="Excluir Conta", bg="#757575", fg="white", font=FONT_BOLD, 
+                  command=self.deletar_despesa).pack(side="left")
+
+        tk.Button(frame_foot, text="MARCAR COMO PAGO", bg=COLOR_SUCCESS, fg="white", font=FONT_BOLD, 
+                  command=self.pagar_despesa).pack(side="right")
+        
+        self.carregar_dados_despesas()
+        self.entry_desc_desp.focus_set()
+
+    def adicionar_despesa(self):
+        """Lança uma nova despesa no banco"""
+        try:
+            val_str = self.entry_val_desp.get().replace(",", ".")
+            aviso_zerado = False
+            
+            # Tratamento de Valor Zero com confirmação simplificada
+            if not val_str:
+                if not messagebox.askyesno("Confirmar", "Valor não informado, deseja prosseguir?", parent=self.top_desp):
+                    return
+                valor = 0.0
+                aviso_zerado = True
+            else:
+                valor = float(val_str)
+            
+            desc = self.entry_desc_desp.get().strip().upper()
+            if not desc: return
+            
+            venc_br = self.entry_venc_desp.get()
+            try: venc_db = datetime.strptime(venc_br, '%d/%m/%Y').strftime("%Y-%m-%d")
+            except: venc_db = "" 
+            
+            self.cursor.execute("INSERT INTO despesas (descricao, categoria, valor, vencimento, status) VALUES (?, ?, ?, ?, ?)",
+                                (desc, self.combo_cat_desp.get(), valor, venc_db, 'PENDENTE'))
+            self.conn.commit()
+            
+            # Limpa campos
+            self.entry_desc_desp.delete(0, 'end')
+            self.entry_val_desp.delete(0, 'end')
+            
+            self.carregar_dados_despesas()
+            self.entry_desc_desp.focus_set() 
+            
+            # Suprime popup se for fluxo rápido (valor zerado)
+            if not aviso_zerado:
+                messagebox.showinfo("Sucesso", "Conta lançada!", parent=self.top_desp)
+        except ValueError:
+            messagebox.showerror("Erro", "Valor inválido", parent=self.top_desp)
+
+    def carregar_dados_despesas(self, event=None):
+        """Carrega despesas reais e projeta despesas fixas automaticamente"""
+        for i in self.tree_desp.get_children():
+            self.tree_desp.delete(i)
+            
+        mes = self.combo_mes_desp.get()
+        ano = self.combo_ano_desp.get()
+        
+        query = "SELECT * FROM despesas WHERE 1=1"
+        params = []
+        filtros_data = []
+        
+        if mes != 'Todos':
+            filtros_data.append(f"strftime('%m', vencimento) = '{MESES_FILTRO[mes]}'")
+        if ano != 'Todos':
+            filtros_data.append(f"strftime('%Y', vencimento) = '{ano}'")
+        
+        # Filtra datas OU mostra o que não tem data (projetos/rascunhos)
+        if filtros_data:
+            clausula_tempo = " AND (" + " AND ".join(filtros_data) + " OR vencimento = '' OR vencimento IS NULL)"
+            query += clausula_tempo
+        
+        # Ordenação: Sem data primeiro, depois por vencimento
+        query += " ORDER BY CASE WHEN vencimento = '' THEN 0 ELSE 1 END, vencimento ASC"
+        
+        self.cursor.execute(query, params)
+        rows = self.cursor.fetchall()
+        
+        total = 0
+        descricoes_no_mes = []
+
+        # 1. Carrega dados REAIS do banco
+        for row in rows:
+            descricoes_no_mes.append(row[1]) 
+            
+            if not row[4]: 
+                venc_br = "SEM DATA"
+                tag = 'sem_data'
+            else:
+                try: venc_br = datetime.strptime(row[4], "%Y-%m-%d").strftime("%d/%m/%Y")
+                except: venc_br = row[4]
+                tag = 'pago' if row[5] == 'PAGO' else 'pendente'
+            
+            val_fmt = "R$ {:,.2f}".format(row[3]).replace(",", "X").replace(".", ",").replace("X", ".")
+            status = row[5]
+            
+            # Tuple: ID, Desc, Cat, Val, Venc, Status
+            self.tree_desp.insert("", "end", values=(row[0], row[1], row[2], val_fmt, venc_br, status), tags=(tag,))
+            total += row[3]
+
+        # 2. PROJEÇÃO AUTOMÁTICA DE FIXAS
+        # Se estamos vendo um mês específico, o sistema busca fixas antigas e projeta
+        if mes != 'Todos' and ano != 'Todos':
+            self.cursor.execute("SELECT DISTINCT descricao, valor, categoria FROM despesas WHERE categoria='Fixa'")
+            fixas_historico = self.cursor.fetchall()
+            
+            for desc, val, cat in fixas_historico:
+                # Se a despesa fixa NÃO está lançada nesse mês ainda
+                if desc not in descricoes_no_mes:
+                    val_fmt = "R$ {:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
+                    id_virtual = f"FIX_||{desc}||{val}"
+                    
+                    self.tree_desp.insert("", 0, values=(id_virtual, desc, cat, val_fmt, "A DEFINIR", "A LANÇAR"), tags=('sem_data',))
+            
+        self.lbl_total_despesas.config(text="R$ {:,.2f}".format(total).replace(",", "X").replace(".", ",").replace("X", "."))
+
+    def editar_data_despesa(self, event):
+        """Permite editar data ou confirmar uma projeção fixa"""
+        sel = self.tree_desp.selection()
+        if not sel: return
+        item = self.tree_desp.item(sel)
+        
+        id_conta = item['values'][0]
+        
+        nova_data = simpledialog.askstring("Definir Data", "Digite a data (dd/mm/aaaa):", parent=self.top_desp)
+        if not nova_data: return
+
+        try:
+            data_db = datetime.strptime(nova_data, '%d/%m/%Y').strftime("%Y-%m-%d")
+        except:
+            messagebox.showerror("Erro", "Data inválida. Use dia/mês/ano", parent=self.top_desp)
+            return
+
+        # Verifica se é PROJEÇÃO (FIX_) ou REAL
+        if str(id_conta).startswith("FIX_"):
+            partes = str(id_conta).split("||")
+            desc_real = partes[1]
+            val_real = float(partes[2])
+            
+            # Cria a conta de verdade agora
+            self.cursor.execute("INSERT INTO despesas (descricao, categoria, valor, vencimento, status) VALUES (?, ?, ?, ?, ?)",
+                                (desc_real, 'Fixa', val_real, data_db, 'PENDENTE'))
+        else:
+            self.cursor.execute("UPDATE despesas SET vencimento=? WHERE id=?", (data_db, id_conta))
+            
+        self.conn.commit()
+        self.carregar_dados_despesas()
+
+    def pagar_despesa(self):
+        """Marca conta como PAGO (Cria se for virtual)"""
+        sel = self.tree_desp.selection()
+        if not sel: return
+        item = self.tree_desp.item(sel)
+        id_conta = item['values'][0]
+        
+        if str(id_conta).startswith("FIX_"):
+            partes = str(id_conta).split("||")
+            desc_real = partes[1]
+            val_real = float(partes[2])
+            
+            # Define data padrão como dia 10 do filtro selecionado
+            mes_idx = MESES_FILTRO.get(self.combo_mes_desp.get())
+            ano = self.combo_ano_desp.get()
+            if mes_idx and ano != 'Todos':
+                venc_db = f"{ano}-{mes_idx}-10"
+            else:
+                venc_db = datetime.now().strftime("%Y-%m-%d")
+
+            self.cursor.execute("INSERT INTO despesas (descricao, categoria, valor, vencimento, status) VALUES (?, ?, ?, ?, ?)",
+                                (desc_real, 'Fixa', val_real, venc_db, 'PAGO'))
+        else:
+            self.cursor.execute("UPDATE despesas SET status='PAGO' WHERE id=?", (id_conta,))
+            
+        self.conn.commit()
+        self.carregar_dados_despesas()
+
+    def deletar_despesa(self):
+        """Remove despesa do banco"""
+        sel = self.tree_desp.selection()
+        if not sel: return
+        
+        item = self.tree_desp.item(sel)
+        id_conta = item['values'][0]
+        
+        if str(id_conta).startswith("FIX_"):
+            messagebox.showinfo("Info", "Esta é uma projeção automática.\nEla não existe no banco para ser excluída.", parent=self.top_desp)
+            return
+
+        if not messagebox.askyesno("Confirmar", "Excluir conta?", parent=self.top_desp): return
+        
+        self.cursor.execute("DELETE FROM despesas WHERE id=?", (id_conta,))
+        self.conn.commit()
+        self.carregar_dados_despesas()
+
 
     def criar_area_filtros(self):
         """Barra de ferramentas superior para filtrar a visualização da tabela"""
@@ -339,6 +688,7 @@ class AppControleVendas:
 
     def criar_tabela(self):
         """Inicializa o banco de dados se não existir"""
+        # Tabela de Pedidos
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS pedidos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -346,11 +696,24 @@ class AppControleVendas:
                 valor REAL, status TEXT, vendedor TEXT, entrega TEXT
             )
         """)
+        # Tabela de Despesas (Financeiro)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS despesas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                descricao TEXT, categoria TEXT, valor REAL, 
+                vencimento TEXT, status TEXT
+            )
+        """)
         self.conn.commit()
 
     def abrir_popup_calendario(self, entry_alvo):
         """Abre um widget de calendário para seleção visual de data (cliente exigiu), surgiram vários bugs com ele, mas nessa implementação creio estar tudo ok"""
-        top_cal = Toplevel(self.root)
+        if isinstance(entry_alvo, tk.Entry):
+            parent = entry_alvo.winfo_toplevel()
+        else:
+            parent = self.root
+
+        top_cal = Toplevel(parent)
         top_cal.title("Selecione a Data")
         
         # Centraliza o popup no mouse
