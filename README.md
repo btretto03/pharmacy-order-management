@@ -4,7 +4,7 @@ Sistema desktop desenvolvido em Python para gerenciamento de pedidos, orçamento
 
 ## 🚀 Funcionalidades
 
-### 🛒 Controle de Vendas(V.1.0)
+### 🛒 Controle de Vendas (V.1.0)
 - **Cadastro de Pedidos:** Interface ágil com *autocomplete* de clientes e produtos para inserção de novos orçamentos.
 - **Sincronização em Rede:** Arquitetura Cliente-Servidor simplificada onde múltiplos terminais leem/escrevem no mesmo banco SQLite via mapeamento de rede.
 - **Atualização em Tempo Real:** O sistema monitora alterações no banco e atualiza a tabela de vendas automaticamente a cada cinco segundos.
