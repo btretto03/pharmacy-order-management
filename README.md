@@ -16,6 +16,12 @@ Sistema desktop desenvolvido em Python para gerenciamento de pedidos, orçamento
 - **Projeção Automática de Fixas:** O sistema identifica despesas recorrentes (categoria "Fixa") e as projeta automaticamente nos meses seguintes como "A DEFINIR". Isso elimina a necessidade de lançar manualmente contas repetitivas todo mês.
 - **Filtros Avançados:** Visualização de despesas filtradas por Mês e Ano.
 
+### 📱 Integração WhatsApp (V.1.2)
+- **Automação de Mensagens:** Envio direto de notificações via WhatsApp Web com um clique, sem necessidade de digitar o número ou salvar na agenda do celular.
+- **Modelos Inteligentes (Templates):** Sistema de mensagens pré-definidas e editáveis para situações rotineiras: "Orçamento Pronto", "Saiu para Entrega", "Aviso de Retirada" e "Cobrança PIX".
+- **Variáveis Dinâmicas:** Os modelos suportam *placeholders* (como `{nome}`, `{produto}`, `{valor}`) que são preenchidos automaticamente com os dados do pedido selecionado.
+- **Gestão de Contatos:** O sistema verifica e salva automaticamente o telefone do cliente no banco de dados, facilitando contatos futuros.
+
 ## 🛠 Tecnologias Utilizadas
 - **Linguagem:** Python
 - **GUI:** Tkinter (Interface Gráfica Nativa)
