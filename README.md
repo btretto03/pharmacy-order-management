@@ -4,14 +4,20 @@ Sistema desktop desenvolvido em Python para gerenciamento de pedidos, orçamento
 
 ## 🚀 Funcionalidades
 
-- **Cadastro de Pedidos:** Interface ágil para inserção de novos orçamentos.
+### 🛒 Controle de Vendas(V1)
+- **Cadastro de Pedidos:** Interface ágil com *autocomplete* de clientes e produtos para inserção de novos orçamentos.
 - **Sincronização em Rede:** Arquitetura Cliente-Servidor simplificada onde múltiplos terminais leem/escrevem no mesmo banco SQLite via mapeamento de rede.
-- **Atualização em Tempo Real:** O sistema monitora alterações no banco e atualiza a interface automaticamente a cada cinco segundos.
-- **UX Otimizada:** Navegação por teclado, cores visuais para status (Orçamento/Confirmado/Cancelado) e recurso "Segurar para ver Faturamento" para privacidade.
+- **Atualização em Tempo Real:** O sistema monitora alterações no banco e atualiza a tabela de vendas automaticamente a cada cinco segundos.
+- **UX Otimizada:** Cores visuais para status (Orçamento/Confirmado/Cancelado) e recurso "Segurar para ver Faturamento" para privacidade no balcão.
+
+### 💰 Módulo Financeiro (V2)
+- **Gestão de Despesas:** Controle completo de contas a pagar (água, luz, fornecedores, retiradas).
+- **Acesso Restrito:** O módulo de despesas é protegido por senha (padrão-1234), garantindo que apenas gerentes acessem dados sensíveis.
+- **Projeção Automática de Fixas:** O sistema identifica despesas recorrentes (categoria "Fixa") e as projeta automaticamente nos meses seguintes como "A DEFINIR". Isso elimina a necessidade de lançar manualmente contas repetitivas todo mês.
+- **Filtros Avançados:** Visualização de despesas filtradas por Mês e Ano.
 
 ## 🛠 Tecnologias Utilizadas
-
-- **Linguagem:** Python 3
+- **Linguagem:** Python
 - **GUI:** Tkinter (Interface Gráfica Nativa)
 - **Banco de Dados:** SQLite3
 - **Compilação:** PyInstaller (para gerar executável .exe)
