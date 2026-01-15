@@ -37,7 +37,7 @@ COLOR_BG_PAGO = '#C8E6C9'
 COLOR_BG_SEM_DATA = '#E0E0E0' 
 
 # --- CONFIGURAÇÕES DE NEGÓCIO
-CHAVE_PIX_EMPRESA = "CNPJ: 00.000.000/0001-00" # Ajuste
+CHAVE_PIX_EMPRESA = "CNPJ: 00.000.000/0001-00" 
 
 FONT_MAIN = ("Helvetica", 10)
 FONT_BOLD = ("Helvetica", 10, "bold")
@@ -54,7 +54,7 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# DADOS ESPECÍFICOS (Ajuste) #
+# DADOS ESPECÍFICOS
 CIDADES = [
     'Cidade 1', 'Cidade 2', 'Cidade 3', 'Cidade 4', 
     'Cidade 5', 'Cidade 6', 'Cidade 7', 'Outros'
