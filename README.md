@@ -4,12 +4,9 @@ Sistema de gestão de pedidos, vendas e entregas para farmácia de manipulação
 em uso real. Roda em várias máquinas da rede local compartilhando a mesma base,
 sem servidor dedicado.
 
-<!-- Coloque aqui um print da tela principal. É o item que mais muda a percepção
-     deste repositório — ver a interface vale mais que qualquer descrição.
 <p align="center">
   <img src="docs/tela-principal.png" width="800" alt="Tela principal do sistema">
 </p>
--->
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
