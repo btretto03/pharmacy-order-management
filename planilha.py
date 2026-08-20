@@ -11,7 +11,7 @@
 # em um banco de dados SQLite centralizado em rede, com atualização em tempo real na interface.
 # Integração adicionada com WhatsApp Web para automação de mensagens ao cliente.
 # -------------------------------------------------------------------------
-
+import hashlib
 import tkinter as tk
 from tkinter import ttk, messagebox, Toplevel, simpledialog
 import sqlite3
@@ -38,7 +38,7 @@ COLOR_BG_SEM_DATA = '#E0E0E0'
 
 # --- CONFIGURAÇÕES DE NEGÓCIO
 CHAVE_PIX_EMPRESA = "CNPJ: 00.000.000/0001-00" 
-
+HASH_SENHA_FINANCEIRO = "ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f"
 FONT_MAIN = ("Helvetica", 10)
 FONT_BOLD = ("Helvetica", 10, "bold")
 FONT_HEADER = ("Helvetica", 16, "bold")
@@ -234,8 +234,7 @@ class AppControleVendas:
         
         def verificar(event=None):
             senha = ent_senha.get()
-            if senha == "1234":
-                pop_senha.destroy()
+            if hashlib.sha256(senha.encode()).hexdigest() == HASH_SENHA_FINANCEIRO:               
                 self.abrir_janela_despesas()
             else:
                 messagebox.showerror("Erro", "Senha incorreta!", parent=pop_senha)
