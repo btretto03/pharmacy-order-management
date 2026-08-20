@@ -8,3 +8,7 @@ dist/
 .idea/
 Thumbs.db
 *:Zone.Identifier
+.venv/
+venv/
+caminho_db.txt
+*.sqlite3
